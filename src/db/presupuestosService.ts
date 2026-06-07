@@ -89,10 +89,19 @@ export async function actualizarDatosCliente(
     clienteNombre: string;
     clienteDireccion: string;
     clienteTelefono: string;
+    cotizacionUsdAl: string;
   },
 ): Promise<void> {
   await db.presupuestos.update(id, {
     ...datos,
+    estadoDrive: 'pendiente',
+    actualizadoEn: fechaHoraAhoraISO(),
+  });
+}
+
+export async function marcarPresupuestoEmitido(id: string): Promise<void> {
+  await db.presupuestos.update(id, {
+    estado: 'emitido',
     estadoDrive: 'pendiente',
     actualizadoEn: fechaHoraAhoraISO(),
   });

@@ -41,6 +41,15 @@ export interface LineaPresupuesto {
   actualizadoEn: string;
 }
 
+export interface PdfPresupuesto {
+  id: string;
+  presupuestoId: string;
+  version: number;
+  nombreArchivo: string;
+  archivo: Blob;
+  creadoEn: string;
+}
+
 export interface ConfiguracionApp {
   id: 'principal';
   proximoNumero: number;

@@ -1,11 +1,22 @@
 import { useEffect, useState } from 'react';
 import {
+  agregarLineaPresupuesto,
+  eliminarLineaPresupuesto,
+  listarLineasPorPresupuesto,
+} from './db/lineasPresupuestoService';
+import {
   actualizarDatosCliente,
   crearPresupuestoBorrador,
   listarPresupuestos,
   obtenerPresupuestoPorId,
 } from './db/presupuestosService';
-import type { Presupuesto } from './types/presupuesto';
+import {
+  compartirPdf,
+  descargarPdf,
+  generarYGuardarPdfPresupuesto,
+} from './pdf/presupuestoPdfService';
+import type { LineaPresupuesto, Presupuesto } from './types/presupuesto';
+import { formatearImporteUSD, parsearNumeroDecimal } from './utils/format';
 
 type Pantalla = 'inicio' | 'editar';
 
@@ -20,11 +31,26 @@ function App() {
   const [presupuestos, setPresupuestos] = useState<Presupuesto[]>([]);
   const [presupuestoActual, setPresupuestoActual] =
     useState<Presupuesto | null>(null);
+  const [lineas, setLineas] = useState<LineaPresupuesto[]>([]);
   const [mensaje, setMensaje] = useState('');
 
   async function cargarPresupuestos() {
     const datos = await listarPresupuestos();
     setPresupuestos(datos);
+  }
+
+  async function recargarPresupuestoActual(id: string) {
+    const presupuesto = await obtenerPresupuestoPorId(id);
+
+    if (!presupuesto) {
+      setMensaje('No se encontró el presupuesto.');
+      return;
+    }
+
+    const lineasPresupuesto = await listarLineasPorPresupuesto(id);
+
+    setPresupuestoActual(presupuesto);
+    setLineas(lineasPresupuesto);
   }
 
   useEffect(() => {
@@ -34,6 +60,7 @@ function App() {
   async function manejarNuevoPresupuesto() {
     const nuevo = await crearPresupuestoBorrador();
     setPresupuestoActual(nuevo);
+    setLineas([]);
     setPantalla('editar');
     setMensaje(`Presupuesto ${nuevo.numeroFormateado} creado.`);
     await cargarPresupuestos();
@@ -47,7 +74,10 @@ function App() {
       return;
     }
 
+    const lineasPresupuesto = await listarLineasPorPresupuesto(id);
+
     setPresupuestoActual(presupuesto);
+    setLineas(lineasPresupuesto);
     setPantalla('editar');
     setMensaje('');
   }
@@ -64,26 +94,137 @@ function App() {
       formData.get('clienteDireccion') || '',
     ).trim();
     const clienteTelefono = String(formData.get('clienteTelefono') || '').trim();
+    const cotizacionUsdAl = String(
+      formData.get('cotizacionUsdAl') || '',
+    ).trim();
 
     await actualizarDatosCliente(presupuestoActual.id, {
       clienteNombre,
       clienteDireccion,
       clienteTelefono,
+      cotizacionUsdAl,
     });
 
-    const actualizado = await obtenerPresupuestoPorId(presupuestoActual.id);
-
-    if (actualizado) {
-      setPresupuestoActual(actualizado);
-    }
-
+    await recargarPresupuestoActual(presupuestoActual.id);
     await cargarPresupuestos();
     setMensaje('Datos del cliente guardados.');
+  }
+
+  async function agregarProducto(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!presupuestoActual) return;
+
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+
+    const descripcion = String(formData.get('descripcion') || '').trim();
+    const unidad = String(formData.get('unidad') || '').trim();
+    const cantidad = parsearNumeroDecimal(formData.get('cantidad'));
+    const precioUnitario = parsearNumeroDecimal(formData.get('precioUnitario'));
+
+    if (!descripcion) {
+      setMensaje('Falta la descripción del producto.');
+      return;
+    }
+
+    if (!unidad) {
+      setMensaje('Falta la unidad de medida.');
+      return;
+    }
+
+    if (cantidad <= 0) {
+      setMensaje('La cantidad debe ser mayor que cero.');
+      return;
+    }
+
+    if (precioUnitario <= 0) {
+      setMensaje('El precio unitario debe ser mayor que cero.');
+      return;
+    }
+
+    await agregarLineaPresupuesto(presupuestoActual.id, {
+      descripcion,
+      cantidad,
+      unidad,
+      precioUnitario,
+    });
+
+    form.reset();
+
+    await recargarPresupuestoActual(presupuestoActual.id);
+    await cargarPresupuestos();
+    setMensaje('Producto agregado.');
+  }
+
+  async function borrarLinea(lineaId: string) {
+    if (!presupuestoActual) return;
+
+    const confirmar = window.confirm('¿Eliminar esta línea del presupuesto?');
+
+    if (!confirmar) return;
+
+    await eliminarLineaPresupuesto(presupuestoActual.id, lineaId);
+    await recargarPresupuestoActual(presupuestoActual.id);
+    await cargarPresupuestos();
+    setMensaje('Producto eliminado.');
+  }
+
+  async function generarPdfDescarga() {
+    if (!presupuestoActual) return;
+
+    if (!presupuestoActual.clienteNombre.trim()) {
+      setMensaje('Antes de generar PDF, cargá el nombre del cliente.');
+      return;
+    }
+
+    if (lineas.length === 0) {
+      setMensaje('Antes de generar PDF, cargá al menos un producto.');
+      return;
+    }
+
+    const pdf = await generarYGuardarPdfPresupuesto(presupuestoActual, lineas);
+    descargarPdf(pdf);
+
+    await recargarPresupuestoActual(presupuestoActual.id);
+    await cargarPresupuestos();
+
+    setMensaje(`PDF generado: ${pdf.nombreArchivo}`);
+  }
+
+  async function generarPdfCompartir() {
+    if (!presupuestoActual) return;
+
+    if (!presupuestoActual.clienteNombre.trim()) {
+      setMensaje('Antes de compartir PDF, cargá el nombre del cliente.');
+      return;
+    }
+
+    if (lineas.length === 0) {
+      setMensaje('Antes de compartir PDF, cargá al menos un producto.');
+      return;
+    }
+
+    const pdf = await generarYGuardarPdfPresupuesto(presupuestoActual, lineas);
+    const pudoCompartir = await compartirPdf(pdf);
+
+    if (!pudoCompartir) {
+      descargarPdf(pdf);
+      setMensaje(
+        'El dispositivo no permitió compartir directo. Se descargó el PDF.',
+      );
+    } else {
+      setMensaje(`PDF compartido: ${pdf.nombreArchivo}`);
+    }
+
+    await recargarPresupuestoActual(presupuestoActual.id);
+    await cargarPresupuestos();
   }
 
   function volverInicio() {
     setPantalla('inicio');
     setPresupuestoActual(null);
+    setLineas([]);
     setMensaje('');
     cargarPresupuestos();
   }
@@ -112,7 +253,7 @@ function App() {
           </div>
 
           <form className="form-card" onSubmit={guardarCliente}>
-            <h2>Cliente</h2>
+            <h2>Cliente y cotización</h2>
 
             <label className="field-label">
               Nombre del cliente
@@ -144,21 +285,144 @@ function App() {
               />
             </label>
 
+            <label className="field-label">
+              Cotización USD al
+              <input
+                name="cotizacionUsdAl"
+                defaultValue={presupuestoActual.cotizacionUsdAl}
+                className="text-input"
+                autoComplete="off"
+                placeholder="Ej: 07/06/2026"
+              />
+            </label>
+
             <button type="submit" className="primary-button">
               Guardar cliente
             </button>
           </form>
 
+          <form className="form-card" onSubmit={agregarProducto}>
+            <h2>Agregar producto</h2>
+
+            <label className="field-label">
+              Descripción del producto
+              <textarea
+                name="descripcion"
+                className="text-area"
+                rows={3}
+                autoComplete="off"
+              />
+            </label>
+
+            <div className="two-column-grid">
+              <label className="field-label">
+                Cantidad
+                <input
+                  name="cantidad"
+                  className="text-input"
+                  inputMode="decimal"
+                  autoComplete="off"
+                />
+              </label>
+
+              <label className="field-label">
+                Unidad
+                <input
+                  name="unidad"
+                  className="text-input"
+                  autoComplete="off"
+                  placeholder="kg, un, m..."
+                />
+              </label>
+            </div>
+
+            <label className="field-label">
+              Precio unitario u$s
+              <input
+                name="precioUnitario"
+                className="text-input"
+                inputMode="decimal"
+                autoComplete="off"
+              />
+            </label>
+
+            <button type="submit" className="primary-button">
+              Agregar producto
+            </button>
+          </form>
+
           <div className="form-card">
-            <h2>Productos</h2>
-            <p className="empty-text">
-              En el próximo paso vamos a agregar líneas de detalle.
-            </p>
+            <h2>Productos cargados</h2>
+
+            {lineas.length === 0 ? (
+              <p className="empty-text">Todavía no hay productos cargados.</p>
+            ) : (
+              <div className="line-list">
+                {lineas.map((linea) => (
+                  <article key={linea.id} className="line-card">
+                    <div className="line-header">
+                      <strong>#{linea.orden}</strong>
+                      <button
+                        type="button"
+                        className="danger-button"
+                        onClick={() => borrarLinea(linea.id)}
+                      >
+                        Eliminar
+                      </button>
+                    </div>
+
+                    <p className="line-description">{linea.descripcion}</p>
+
+                    <div className="line-values">
+                      <span>
+                        Cantidad:{' '}
+                        <strong>{formatearImporteUSD(linea.cantidad)}</strong>
+                      </span>
+                      <span>
+                        Unidad: <strong>{linea.unidad}</strong>
+                      </span>
+                      <span>
+                        Precio unit.: u$s{' '}
+                        <strong>
+                          {formatearImporteUSD(linea.precioUnitario)}
+                        </strong>
+                      </span>
+                      <span>
+                        Subtotal: u$s{' '}
+                        <strong>{formatearImporteUSD(linea.subtotal)}</strong>
+                      </span>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="form-card">
+            <h2>PDF</h2>
+
+            <div className="main-actions">
+              <button
+                type="button"
+                className="primary-button"
+                onClick={generarPdfCompartir}
+              >
+                Generar y compartir PDF
+              </button>
+
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={generarPdfDescarga}
+              >
+                Generar y descargar PDF
+              </button>
+            </div>
           </div>
 
           <div className="total-card">
             <span>Total</span>
-            <strong>u$s {presupuestoActual.total.toFixed(2)}</strong>
+            <strong>u$s {formatearImporteUSD(presupuestoActual.total)}</strong>
           </div>
         </section>
       </main>
@@ -220,7 +484,7 @@ function App() {
                     {presupuesto.clienteNombre || 'Sin cliente'}
                   </span>
                   <span className="budget-total">
-                    u$s {presupuesto.total.toFixed(2)}
+                    u$s {formatearImporteUSD(presupuesto.total)}
                   </span>
                 </button>
               ))}

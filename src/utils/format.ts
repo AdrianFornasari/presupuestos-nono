@@ -16,3 +16,17 @@ export function formatearImporteUSD(valor: number): string {
     maximumFractionDigits: 2,
   }).format(valor);
 }
+
+export function parsearNumeroDecimal(valor: FormDataEntryValue | null): number {
+  if (valor === null) return 0;
+
+  const texto = String(valor).trim().replace(/\./g, '').replace(',', '.');
+
+  const numero = Number(texto);
+
+  if (Number.isNaN(numero)) {
+    return 0;
+  }
+
+  return numero;
+}
