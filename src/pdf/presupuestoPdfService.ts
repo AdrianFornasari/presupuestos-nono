@@ -168,7 +168,6 @@ export async function generarYGuardarPdfPresupuesto(
     format: 'a4',
   });
 
-  const anchoPagina = doc.internal.pageSize.getWidth();
   const altoPagina = doc.internal.pageSize.getHeight();
 
   let y = 96;
