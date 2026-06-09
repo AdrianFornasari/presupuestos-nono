@@ -1,4 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import {
+  descargarBackup,
+  restaurarBackupDesdeArchivo,
+} from './db/backupService';
 import {
   agregarLineaPresupuesto,
   eliminarLineaPresupuesto,
@@ -17,8 +21,13 @@ import {
 } from './pdf/presupuestoPdfService';
 import type { LineaPresupuesto, Presupuesto } from './types/presupuesto';
 import { formatearImporteUSD, parsearNumeroDecimal } from './utils/format';
+import {
+  solicitarAlmacenamientoPersistente,
+  textoEstadoAlmacenamiento,
+  type EstadoAlmacenamientoPersistente,
+} from './utils/persistentStorage';
 
-type Pantalla = 'inicio' | 'editar';
+type Pantalla = 'inicio' | 'editar' | 'configuracion';
 
 function textoEstadoDrive(estado: Presupuesto['estadoDrive']): string {
   if (estado === 'tablet') return 'Guardado en tablet';
@@ -33,6 +42,10 @@ function App() {
     useState<Presupuesto | null>(null);
   const [lineas, setLineas] = useState<LineaPresupuesto[]>([]);
   const [mensaje, setMensaje] = useState('');
+  const [estadoAlmacenamiento, setEstadoAlmacenamiento] =
+    useState<EstadoAlmacenamientoPersistente | null>(null);
+
+  const inputBackupRef = useRef<HTMLInputElement | null>(null);
 
   async function cargarPresupuestos() {
     const datos = await listarPresupuestos();
@@ -55,6 +68,10 @@ function App() {
 
   useEffect(() => {
     cargarPresupuestos();
+
+    solicitarAlmacenamientoPersistente().then((estado) => {
+      setEstadoAlmacenamiento(estado);
+    });
   }, []);
 
   async function manejarNuevoPresupuesto() {
@@ -221,12 +238,120 @@ function App() {
     await cargarPresupuestos();
   }
 
+  async function hacerBackupLocal() {
+    try {
+      const nombreArchivo = await descargarBackup();
+      setMensaje(`Copia de seguridad creada: ${nombreArchivo}`);
+    } catch {
+      setMensaje('No se pudo crear la copia de seguridad.');
+    }
+  }
+
+  function seleccionarBackupParaRestaurar() {
+    inputBackupRef.current?.click();
+  }
+
+  async function restaurarBackup(event: React.ChangeEvent<HTMLInputElement>) {
+    const archivo = event.target.files?.[0];
+
+    if (!archivo) return;
+
+    const confirmar = window.confirm(
+      'Esto reemplazará los datos actuales de la tablet por los del backup. ¿Continuar?',
+    );
+
+    if (!confirmar) {
+      event.target.value = '';
+      return;
+    }
+
+    try {
+      await restaurarBackupDesdeArchivo(archivo);
+      await cargarPresupuestos();
+
+      setPresupuestoActual(null);
+      setLineas([]);
+      setPantalla('inicio');
+      setMensaje('Copia de seguridad restaurada.');
+    } catch (error) {
+      const detalle =
+        error instanceof Error ? error.message : 'Error desconocido.';
+      setMensaje(`No se pudo restaurar el backup. ${detalle}`);
+    } finally {
+      event.target.value = '';
+    }
+  }
+
   function volverInicio() {
     setPantalla('inicio');
     setPresupuestoActual(null);
     setLineas([]);
     setMensaje('');
     cargarPresupuestos();
+  }
+
+  if (pantalla === 'configuracion') {
+    return (
+      <main className="app-shell">
+        <section className="screen-card">
+          <button type="button" className="back-button" onClick={volverInicio}>
+            Volver
+          </button>
+
+          <div className="app-header">
+            <p className="eyebrow">Configuración</p>
+            <h1>Seguridad de datos</h1>
+            <p className="subtitle">Copias de seguridad y restauración</p>
+          </div>
+
+          {mensaje && <div className="message-box">{mensaje}</div>}
+
+          <div className="form-card">
+            <h2>Almacenamiento en tablet</h2>
+            <p className="empty-text">
+              {estadoAlmacenamiento
+                ? textoEstadoAlmacenamiento(estadoAlmacenamiento)
+                : 'Verificando almacenamiento...'}
+            </p>
+          </div>
+
+          <div className="form-card">
+            <h2>Copia de seguridad</h2>
+
+            <p className="empty-text">
+              La copia guarda presupuestos, líneas y configuración. Los PDF se
+              pueden volver a generar desde cada presupuesto.
+            </p>
+
+            <div className="main-actions backup-actions">
+              <button
+                type="button"
+                className="primary-button"
+                onClick={hacerBackupLocal}
+              >
+                Hacer copia de seguridad
+              </button>
+
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={seleccionarBackupParaRestaurar}
+              >
+                Restaurar copia
+              </button>
+            </div>
+
+            <input
+              ref={inputBackupRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden-input"
+              onChange={restaurarBackup}
+            />
+          </div>
+        </section>
+      </main>
+    );
   }
 
   if (pantalla === 'editar' && presupuestoActual) {
@@ -453,7 +578,14 @@ function App() {
             Buscar presupuesto
           </button>
 
-          <button type="button" className="secondary-button">
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => {
+              setPantalla('configuracion');
+              setMensaje('');
+            }}
+          >
             Configuración
           </button>
         </div>

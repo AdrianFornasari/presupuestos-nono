@@ -304,3 +304,10 @@ button {
     padding: 24px;
   }
 }
+.backup-actions {
+  margin-top: 28px;
+}
+
+.hidden-input {
+  display: none;
+}
