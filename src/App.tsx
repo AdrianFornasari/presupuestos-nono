@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import {
+  crearBackupJson,
   descargarBackup,
   restaurarBackupDesdeArchivo,
 } from './db/backupService';
@@ -14,6 +15,10 @@ import {
   listarPresupuestos,
   obtenerPresupuestoPorId,
 } from './db/presupuestosService';
+import {
+  conectarGoogleDrive,
+  subirBackupJsonADrive,
+} from './drive/googleDriveService';
 import {
   compartirPdf,
   descargarPdf,
@@ -44,6 +49,9 @@ function App() {
   const [mensaje, setMensaje] = useState('');
   const [estadoAlmacenamiento, setEstadoAlmacenamiento] =
     useState<EstadoAlmacenamientoPersistente | null>(null);
+
+  const [driveConectado, setDriveConectado] = useState(false);
+  const [driveTrabajando, setDriveTrabajando] = useState(false);
 
   const inputBackupRef = useRef<HTMLInputElement | null>(null);
 
@@ -99,7 +107,7 @@ function App() {
     setMensaje('');
   }
 
-  async function guardarCliente(event: React.FormEvent<HTMLFormElement>) {
+  async function guardarCliente(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!presupuestoActual) return;
@@ -127,7 +135,7 @@ function App() {
     setMensaje('Datos del cliente guardados.');
   }
 
-  async function agregarProducto(event: React.FormEvent<HTMLFormElement>) {
+  async function agregarProducto(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!presupuestoActual) return;
@@ -247,11 +255,54 @@ function App() {
     }
   }
 
+  async function conectarDrive() {
+    try {
+      setDriveTrabajando(true);
+      setMensaje('Conectando Google Drive...');
+
+      await conectarGoogleDrive();
+
+      setDriveConectado(true);
+      setMensaje('Google Drive conectado. Carpeta de desarrollo lista.');
+    } catch (error) {
+      const detalle =
+        error instanceof Error ? error.message : 'Error desconocido.';
+
+      setMensaje(`No se pudo conectar Google Drive. ${detalle}`);
+    } finally {
+      setDriveTrabajando(false);
+    }
+  }
+
+  async function hacerBackupEnDrive() {
+    try {
+      setDriveTrabajando(true);
+      setMensaje('Creando copia en Google Drive...');
+
+      const backup = await crearBackupJson();
+
+      const archivoDrive = await subirBackupJsonADrive(
+        backup.nombreArchivo,
+        backup.contenido,
+      );
+
+      setDriveConectado(true);
+      setMensaje(`Copia subida a Drive: ${archivoDrive.name}`);
+    } catch (error) {
+      const detalle =
+        error instanceof Error ? error.message : 'Error desconocido.';
+
+      setMensaje(`No se pudo subir la copia a Drive. ${detalle}`);
+    } finally {
+      setDriveTrabajando(false);
+    }
+  }
+
   function seleccionarBackupParaRestaurar() {
     inputBackupRef.current?.click();
   }
 
-  async function restaurarBackup(event: React.ChangeEvent<HTMLInputElement>) {
+  async function restaurarBackup(event: ChangeEvent<HTMLInputElement>) {
     const archivo = event.target.files?.[0];
 
     if (!archivo) return;
@@ -316,7 +367,7 @@ function App() {
           </div>
 
           <div className="form-card">
-            <h2>Copia de seguridad</h2>
+            <h2>Copia de seguridad local</h2>
 
             <p className="empty-text">
               La copia guarda presupuestos, líneas y configuración. Los PDF se
@@ -348,6 +399,38 @@ function App() {
               className="hidden-input"
               onChange={restaurarBackup}
             />
+          </div>
+
+          <div className="form-card">
+            <h2>Google Drive</h2>
+
+            <p className="empty-text">
+              Carpeta de desarrollo: Presupuestos Nono - DEV
+            </p>
+
+            <p className="empty-text">
+              Estado: {driveConectado ? 'Drive conectado' : 'Drive no conectado'}
+            </p>
+
+            <div className="main-actions backup-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={conectarDrive}
+                disabled={driveTrabajando}
+              >
+                Conectar Google Drive
+              </button>
+
+              <button
+                type="button"
+                className="primary-button"
+                onClick={hacerBackupEnDrive}
+                disabled={driveTrabajando}
+              >
+                Hacer copia en Drive
+              </button>
+            </div>
           </div>
         </section>
       </main>
