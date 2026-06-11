@@ -34,6 +34,7 @@ button {
 
 .home-card,
 .screen-card {
+  position: relative;
   width: 100%;
   max-width: 840px;
   margin: 0 auto;
@@ -45,6 +46,7 @@ button {
 
 .app-header {
   margin-bottom: 36px;
+  padding-right: 260px;
 }
 
 .eyebrow {
@@ -65,6 +67,11 @@ button {
   margin: 12px 0 0;
   font-size: 1.35rem;
   color: #dddddd;
+}
+
+.home-card .app-header .eyebrow,
+.home-card .app-header .subtitle {
+  display: none;
 }
 
 .main-actions {
@@ -121,20 +128,27 @@ button {
 }
 
 .storage-status {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-top: 32px;
-  padding: 18px;
+  position: absolute;
+  top: 32px;
+  right: 32px;
+  width: auto;
+  max-width: 240px;
+  margin-top: 0;
+  padding: 12px 16px;
   border: 2px solid #888888;
   border-radius: 18px;
-  font-size: 1rem;
+  background: #111111;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.9rem;
   color: #eeeeee;
+  z-index: 2;
 }
 
 .status-dot {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   background: #ffffff;
   flex: 0 0 auto;
@@ -190,6 +204,20 @@ button {
   cursor: pointer;
 }
 
+.budget-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.budget-line strong {
+  font-weight: 900;
+}
+
 .budget-number {
   font-size: 1.35rem;
   font-weight: 900;
@@ -223,7 +251,7 @@ button {
 }
 
 .text-area {
-  min-height: 150px;
+  min-height: 110px;
   resize: vertical;
   line-height: 1.35;
 }
@@ -243,6 +271,53 @@ button {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 18px;
+}
+
+.product-card {
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+  border: 3px solid #ffffff;
+  border-radius: 18px;
+  background: #0d0d0d;
+}
+
+.product-card-title {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 1.25rem;
+  line-height: 1.3;
+}
+
+.product-card-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  font-size: 1.05rem;
+  line-height: 1.35;
+}
+
+.product-card-row span {
+  display: block;
+}
+
+.product-card-subtotal {
+  padding-top: 10px;
+  border-top: 2px solid #777777;
+  font-size: 1.25rem;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.product-card-subtotal strong {
+  font-size: 1.35rem;
+}
+
+.product-card-delete {
+  justify-self: start;
+  margin-top: 4px;
 }
 
 .line-card {
@@ -294,8 +369,17 @@ button {
   font-size: 1.7rem;
 }
 
+.backup-actions {
+  margin-top: 28px;
+}
+
+.hidden-input {
+  display: none;
+}
+
 @media (max-width: 700px) {
-  .two-column-grid {
+  .two-column-grid,
+  .product-card-row {
     grid-template-columns: 1fr;
   }
 
@@ -303,11 +387,16 @@ button {
   .screen-card {
     padding: 24px;
   }
-}
-.backup-actions {
-  margin-top: 28px;
-}
 
-.hidden-input {
-  display: none;
+  .app-header {
+    padding-right: 0;
+    padding-top: 92px;
+  }
+
+  .storage-status {
+    top: 24px;
+    right: 24px;
+    left: 24px;
+    max-width: none;
+  }
 }

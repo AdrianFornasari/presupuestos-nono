@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+} from 'react';
 import {
   crearBackupJson,
   descargarBackup,
@@ -25,7 +31,13 @@ import {
   generarYGuardarPdfPresupuesto,
 } from './pdf/presupuestoPdfService';
 import type { LineaPresupuesto, Presupuesto } from './types/presupuesto';
-import { formatearImporteUSD, parsearNumeroDecimal } from './utils/format';
+import {
+  formatearDecimal4,
+  formatearEntero,
+  formatearImporteUSD,
+  parsearEntero,
+  parsearNumeroDecimal,
+} from './utils/format';
 import {
   solicitarAlmacenamientoPersistente,
   textoEstadoAlmacenamiento,
@@ -38,6 +50,16 @@ function textoEstadoDrive(estado: Presupuesto['estadoDrive']): string {
   if (estado === 'tablet') return 'Guardado en tablet';
   if (estado === 'pendiente') return 'Copia en Drive pendiente';
   return 'Copia en Drive realizada';
+}
+
+function formatearFechaLista(fechaISO: string): string {
+  const [anio, mes, dia] = fechaISO.split('-');
+
+  if (!anio || !mes || !dia) {
+    return fechaISO;
+  }
+
+  return `${dia}/${mes}/${anio}`;
 }
 
 function App() {
@@ -145,7 +167,8 @@ function App() {
 
     const descripcion = String(formData.get('descripcion') || '').trim();
     const unidad = String(formData.get('unidad') || '').trim();
-    const cantidad = parsearNumeroDecimal(formData.get('cantidad'));
+    const cantidad = parsearEntero(formData.get('cantidad'));
+    const acumulado = parsearNumeroDecimal(formData.get('acumulado'));
     const precioUnitario = parsearNumeroDecimal(formData.get('precioUnitario'));
 
     if (!descripcion) {
@@ -158,12 +181,17 @@ function App() {
       return;
     }
 
-    if (cantidad <= 0) {
-      setMensaje('La cantidad debe ser mayor que cero.');
+    if (!Number.isInteger(cantidad) || cantidad <= 0) {
+      setMensaje('La cantidad debe ser un número entero mayor que cero.');
       return;
     }
 
-    if (precioUnitario <= 0) {
+    if (!Number.isFinite(acumulado) || acumulado < 0) {
+      setMensaje('El acumulado debe ser un número válido con hasta 4 decimales.');
+      return;
+    }
+
+    if (!Number.isFinite(precioUnitario) || precioUnitario <= 0) {
       setMensaje('El precio unitario debe ser mayor que cero.');
       return;
     }
@@ -173,6 +201,7 @@ function App() {
       cantidad,
       unidad,
       precioUnitario,
+      acumulado,
     });
 
     form.reset();
@@ -350,9 +379,7 @@ function App() {
           </button>
 
           <div className="app-header">
-            <p className="eyebrow">Configuración</p>
             <h1>Seguridad de datos</h1>
-            <p className="subtitle">Copias de seguridad y restauración</p>
           </div>
 
           {mensaje && <div className="message-box">{mensaje}</div>}
@@ -445,6 +472,11 @@ function App() {
             Volver
           </button>
 
+          <div className="storage-status">
+            <span className="status-dot" />
+            <span>{textoEstadoDrive(presupuestoActual.estadoDrive)}</span>
+          </div>
+
           <div className="app-header">
             <p className="eyebrow">Presupuesto</p>
             <h1>{presupuestoActual.numeroFormateado}</h1>
@@ -454,11 +486,6 @@ function App() {
           </div>
 
           {mensaje && <div className="message-box">{mensaje}</div>}
-
-          <div className="storage-status">
-            <span className="status-dot" />
-            <span>{textoEstadoDrive(presupuestoActual.estadoDrive)}</span>
-          </div>
 
           <form className="form-card" onSubmit={guardarCliente}>
             <h2>Cliente y cotización</h2>
@@ -517,7 +544,7 @@ function App() {
               <textarea
                 name="descripcion"
                 className="text-area"
-                rows={3}
+                rows={2}
                 autoComplete="off"
               />
             </label>
@@ -528,8 +555,9 @@ function App() {
                 <input
                   name="cantidad"
                   className="text-input"
-                  inputMode="decimal"
+                  inputMode="numeric"
                   autoComplete="off"
+                  placeholder="Entero"
                 />
               </label>
 
@@ -544,15 +572,29 @@ function App() {
               </label>
             </div>
 
-            <label className="field-label">
-              Precio unitario u$s
-              <input
-                name="precioUnitario"
-                className="text-input"
-                inputMode="decimal"
-                autoComplete="off"
-              />
-            </label>
+            <div className="two-column-grid">
+              <label className="field-label">
+                Acumulado
+                <input
+                  name="acumulado"
+                  className="text-input"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  placeholder="0,0000"
+                />
+              </label>
+
+              <label className="field-label">
+                Precio unitario u$s
+                <input
+                  name="precioUnitario"
+                  className="text-input"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  placeholder="0,0000"
+                />
+              </label>
+            </div>
 
             <button type="submit" className="primary-button">
               Agregar producto
@@ -567,39 +609,47 @@ function App() {
             ) : (
               <div className="line-list">
                 {lineas.map((linea) => (
-                  <article key={linea.id} className="line-card">
-                    <div className="line-header">
-                      <strong>#{linea.orden}</strong>
-                      <button
-                        type="button"
-                        className="danger-button"
-                        onClick={() => borrarLinea(linea.id)}
-                      >
-                        Eliminar
-                      </button>
+                  <article key={linea.id} className="product-card">
+                    <div className="product-card-title">
+                      <strong>{linea.orden}</strong>
+                      <span>-</span>
+                      <strong>{linea.descripcion}</strong>
                     </div>
 
-                    <p className="line-description">{linea.descripcion}</p>
-
-                    <div className="line-values">
+                    <div className="product-card-row">
                       <span>
-                        Cantidad:{' '}
-                        <strong>{formatearImporteUSD(linea.cantidad)}</strong>
+                        Cantidad: <strong>{formatearEntero(linea.cantidad)}</strong>
                       </span>
+
                       <span>
                         Unidad: <strong>{linea.unidad}</strong>
                       </span>
+                    </div>
+
+                    <div className="product-card-row">
+                      <span>
+                        Acumulado:{' '}
+                        <strong>{formatearDecimal4(linea.acumulado ?? 0)}</strong>
+                      </span>
+
                       <span>
                         Precio unit.: u$s{' '}
-                        <strong>
-                          {formatearImporteUSD(linea.precioUnitario)}
-                        </strong>
-                      </span>
-                      <span>
-                        Subtotal: u$s{' '}
-                        <strong>{formatearImporteUSD(linea.subtotal)}</strong>
+                        <strong>{formatearDecimal4(linea.precioUnitario)}</strong>
                       </span>
                     </div>
+
+                    <div className="product-card-subtotal">
+                      Subtotal: u$s{' '}
+                      <strong>{formatearImporteUSD(linea.subtotal)}</strong>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="danger-button product-card-delete"
+                      onClick={() => borrarLinea(linea.id)}
+                    >
+                      Eliminar
+                    </button>
                   </article>
                 ))}
               </div>
@@ -627,11 +677,6 @@ function App() {
               </button>
             </div>
           </div>
-
-          <div className="total-card">
-            <span>Total</span>
-            <strong>u$s {formatearImporteUSD(presupuestoActual.total)}</strong>
-          </div>
         </section>
       </main>
     );
@@ -640,10 +685,13 @@ function App() {
   return (
     <main className="app-shell">
       <section className="home-card">
+        <div className="storage-status">
+          <span className="status-dot" />
+          <span>Guardado en tablet</span>
+        </div>
+
         <div className="app-header">
-          <p className="eyebrow">Industrial Aceros</p>
           <h1>Presupuestos</h1>
-          <p className="subtitle">Cotizaciones comerciales</p>
         </div>
 
         {mensaje && <div className="message-box">{mensaje}</div>}
@@ -673,11 +721,6 @@ function App() {
           </button>
         </div>
 
-        <div className="storage-status">
-          <span className="status-dot" />
-          <span>Guardado en tablet</span>
-        </div>
-
         <div className="list-card">
           <h2>Últimos presupuestos</h2>
 
@@ -692,14 +735,14 @@ function App() {
                   className="budget-item"
                   onClick={() => abrirPresupuesto(presupuesto.id)}
                 >
-                  <span className="budget-number">
-                    {presupuesto.numeroFormateado}
-                  </span>
-                  <span className="budget-client">
-                    {presupuesto.clienteNombre || 'Sin cliente'}
-                  </span>
-                  <span className="budget-total">
-                    u$s {formatearImporteUSD(presupuesto.total)}
+                  <span className="budget-line">
+                    <strong>{presupuesto.numeroFormateado}</strong>
+                    <span>-</span>
+                    <span>{formatearFechaLista(presupuesto.fechaEmision)}</span>
+                    <span>-</span>
+                    <span>{presupuesto.clienteNombre || 'Sin cliente'}</span>
+                    <span>-</span>
+                    <strong>u$s {formatearImporteUSD(presupuesto.total)}</strong>
                   </span>
                 </button>
               ))}

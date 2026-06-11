@@ -7,6 +7,7 @@ interface NuevaLineaPresupuesto {
   cantidad: number;
   unidad: string;
   precioUnitario: number;
+  acumulado: number;
 }
 
 export async function listarLineasPorPresupuesto(
@@ -49,6 +50,7 @@ export async function agregarLineaPresupuesto(
         cantidad: datos.cantidad,
         unidad: datos.unidad,
         precioUnitario: datos.precioUnitario,
+        acumulado: datos.acumulado,
         subtotal,
         creadoEn: ahora,
         actualizadoEn: ahora,

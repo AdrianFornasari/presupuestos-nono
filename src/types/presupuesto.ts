@@ -35,6 +35,7 @@ export interface LineaPresupuesto {
   cantidad: number;
   unidad: string;
   precioUnitario: number;
+  acumulado: number;
   subtotal: number;
 
   creadoEn: string;
