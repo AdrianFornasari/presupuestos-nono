@@ -5,6 +5,7 @@ import {
   type ChangeEvent,
   type FormEvent,
 } from 'react';
+import MetalWeightCalculatorModal from './components/MetalWeightCalculatorModal';
 import {
   crearBackupJson,
   descargarBackup,
@@ -40,15 +41,10 @@ import {
   parsearNumeroDecimal,
 } from './utils/format';
 import {
-  MetalWeightCalculatorModal,
-  parseDecimalInput,
-} from './components/MetalWeightCalculatorModal';
-import {
   solicitarAlmacenamientoPersistente,
   textoEstadoAlmacenamiento,
   type EstadoAlmacenamientoPersistente,
 } from './utils/persistentStorage';
-
 
 type Pantalla = 'inicio' | 'editar' | 'configuracion';
 
@@ -72,6 +68,10 @@ function obtenerPesoTotalLinea(linea: LineaPresupuesto): number {
   return linea.pesoTotal ?? linea.acumulado ?? 0;
 }
 
+function formatearDecimal4SinMiles(valor: number): string {
+  return valor.toFixed(4).replace('.', ',');
+}
+
 function App() {
   const [pantalla, setPantalla] = useState<Pantalla>('inicio');
   const [presupuestos, setPresupuestos] = useState<Presupuesto[]>([]);
@@ -85,15 +85,15 @@ function App() {
   const [driveConectado, setDriveConectado] = useState(false);
   const [driveTrabajando, setDriveTrabajando] = useState(false);
 
-  const [mostrarCalculadoraMetales, setMostrarCalculadoraMetales] =
-    useState(false);
-  const [cantidadCalculadoraMetales, setCantidadCalculadoraMetales] =
+  const [calculadoraAbierta, setCalculadoraAbierta] = useState(false);
+  const [cantidadParaCalculadora, setCantidadParaCalculadora] = useState(0);
+  const [precioUnitarioParaCalculadora, setPrecioUnitarioParaCalculadora] =
     useState(0);
 
   const inputBackupRef = useRef<HTMLInputElement | null>(null);
-  const cantidadNuevoProductoRef = useRef<HTMLInputElement | null>(null);
-  const pesoTotalNuevoProductoRef = useRef<HTMLInputElement | null>(null);
-  const noAbrirCalculadoraMetalesHastaSalirDelCampoRef = useRef(false);
+  const cantidadInputRef = useRef<HTMLInputElement | null>(null);
+  const pesoTotalInputRef = useRef<HTMLInputElement | null>(null);
+  const precioUnitarioInputRef = useRef<HTMLInputElement | null>(null);
 
   async function cargarPresupuestos() {
     const datos = await listarPresupuestos();
@@ -189,6 +189,49 @@ function App() {
     setMensaje('Datos del cliente guardados.');
   }
 
+  function intentarAbrirCalculadoraPeso() {
+    const pesoActualTexto = pesoTotalInputRef.current?.value.trim() ?? '';
+    const pesoActual = pesoActualTexto
+      ? parsearNumeroDecimal(pesoActualTexto)
+      : 0;
+
+    if (Number.isFinite(pesoActual) && pesoActual > 0) {
+      return;
+    }
+
+    const cantidad = parsearEntero(cantidadInputRef.current?.value ?? '');
+
+    if (!Number.isInteger(cantidad) || cantidad <= 0) {
+      setMensaje(
+        'Antes de calcular el peso total, cargá una cantidad entera mayor que cero.',
+      );
+      cantidadInputRef.current?.focus();
+      return;
+    }
+
+    const precioUnitario = parsearNumeroDecimal(
+      precioUnitarioInputRef.current?.value ?? '',
+    );
+
+    setCantidadParaCalculadora(cantidad);
+    setPrecioUnitarioParaCalculadora(
+      Number.isFinite(precioUnitario) && precioUnitario > 0
+        ? precioUnitario
+        : 0,
+    );
+    setCalculadoraAbierta(true);
+    setMensaje('');
+  }
+
+  function aceptarPesoCalculado(pesoCalculado: number) {
+    if (pesoTotalInputRef.current) {
+      pesoTotalInputRef.current.value = formatearDecimal4SinMiles(pesoCalculado);
+    }
+
+    setCalculadoraAbierta(false);
+    setMensaje('Peso total calculado.');
+  }
+
   async function agregarProducto(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -208,23 +251,23 @@ function App() {
       return;
     }
 
-    if (!unidad) {
-      setMensaje('Falta la unidad de medida.');
-      return;
-    }
-
     if (!Number.isInteger(cantidad) || cantidad <= 0) {
       setMensaje('La cantidad debe ser un número entero mayor que cero.');
       return;
     }
 
-    if (!Number.isFinite(pesoTotal) || pesoTotal < 0) {
-      setMensaje('El peso total debe ser un número válido con hasta 4 decimales.');
+    if (!Number.isFinite(precioUnitario) || precioUnitario <= 0) {
+      setMensaje('El precio unitario debe ser mayor que cero.');
       return;
     }
 
-    if (!Number.isFinite(precioUnitario) || precioUnitario <= 0) {
-      setMensaje('El precio unitario debe ser mayor que cero.');
+    if (!Number.isFinite(pesoTotal) || pesoTotal <= 0) {
+      setMensaje('El peso total debe ser mayor que cero.');
+      return;
+    }
+
+    if (!unidad) {
+      setMensaje('Falta la unidad de medida.');
       return;
     }
 
@@ -394,55 +437,11 @@ function App() {
     }
   }
 
-  function abrirCalculadoraMetalesSiCorresponde() {
-    if (noAbrirCalculadoraMetalesHastaSalirDelCampoRef.current) {
-      return;
-    }
-
-    const pesoActual = parseDecimalInput(pesoTotalNuevoProductoRef.current?.value);
-
-    if (pesoActual !== 0) {
-      return;
-    }
-
-    const cantidadActual = parseDecimalInput(cantidadNuevoProductoRef.current?.value);
-
-    setCantidadCalculadoraMetales(cantidadActual);
-    setMostrarCalculadoraMetales(true);
-  }
-
-  function habilitarAperturaCalculadoraMetales() {
-    noAbrirCalculadoraMetalesHastaSalirDelCampoRef.current = false;
-  }
-
-  function cerrarCalculadoraMetalesParaCargaManual() {
-    noAbrirCalculadoraMetalesHastaSalirDelCampoRef.current = true;
-    setMostrarCalculadoraMetales(false);
-
-    window.setTimeout(() => {
-      pesoTotalNuevoProductoRef.current?.focus();
-    }, 0);
-  }
-
-  function aplicarPesoCalculado(totalWeightKg: number) {
-    if (!pesoTotalNuevoProductoRef.current) {
-      setMostrarCalculadoraMetales(false);
-      return;
-    }
-
-    pesoTotalNuevoProductoRef.current.value = totalWeightKg.toFixed(4);
-    noAbrirCalculadoraMetalesHastaSalirDelCampoRef.current = false;
-    setMostrarCalculadoraMetales(false);
-    setMensaje('Peso total calculado y cargado.');
-  }
-
   function volverInicio() {
     setPantalla('inicio');
     setPresupuestoActual(null);
     setLineas([]);
     setMensaje('');
-    setMostrarCalculadoraMetales(false);
-    noAbrirCalculadoraMetalesHastaSalirDelCampoRef.current = false;
     cargarPresupuestos();
   }
 
@@ -636,12 +635,39 @@ function App() {
               <label className="field-label">
                 Cantidad
                 <input
-                  ref={cantidadNuevoProductoRef}
+                  ref={cantidadInputRef}
                   name="cantidad"
                   className="text-input"
                   inputMode="numeric"
                   autoComplete="off"
                   placeholder="Entero"
+                />
+              </label>
+
+              <label className="field-label">
+                Precio unitario u$s
+                <input
+                  ref={precioUnitarioInputRef}
+                  name="precioUnitario"
+                  className="text-input"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  placeholder="0,0000"
+                />
+              </label>
+            </div>
+
+            <div className="two-column-grid">
+              <label className="field-label">
+                Peso total
+                <input
+                  ref={pesoTotalInputRef}
+                  name="pesoTotal"
+                  className="text-input"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  placeholder="0,0000"
+                  onFocus={intentarAbrirCalculadoraPeso}
                 />
               </label>
 
@@ -656,38 +682,18 @@ function App() {
               </label>
             </div>
 
-            <div className="two-column-grid">
-              <label className="field-label">
-                Peso total
-                <input
-                  ref={pesoTotalNuevoProductoRef}
-                  name="pesoTotal"
-                  className="text-input"
-                  inputMode="decimal"
-                  autoComplete="off"
-                  placeholder="0,0000"
-                  onFocus={abrirCalculadoraMetalesSiCorresponde}
-                  onClick={abrirCalculadoraMetalesSiCorresponde}
-                  onBlur={habilitarAperturaCalculadoraMetales}
-                />
-              </label>
-
-              <label className="field-label">
-                Precio unitario u$s
-                <input
-                  name="precioUnitario"
-                  className="text-input"
-                  inputMode="decimal"
-                  autoComplete="off"
-                  placeholder="0,0000"
-                />
-              </label>
-            </div>
-
             <button type="submit" className="primary-button">
               Agregar producto
             </button>
           </form>
+
+          <MetalWeightCalculatorModal
+            abierto={calculadoraAbierta}
+            cantidad={cantidadParaCalculadora}
+            precioUnitario={precioUnitarioParaCalculadora}
+            onAceptar={aceptarPesoCalculado}
+            onCerrar={() => setCalculadoraAbierta(false)}
+          />
 
           <div className="form-card">
             <h2>Productos cargados</h2>
@@ -771,13 +777,6 @@ function App() {
             </div>
           </div>
         </section>
-
-        <MetalWeightCalculatorModal
-          isOpen={mostrarCalculadoraMetales}
-          quantity={cantidadCalculadoraMetales}
-          onApply={aplicarPesoCalculado}
-          onClose={cerrarCalculadoraMetalesParaCargaManual}
-        />
       </main>
     );
   }
