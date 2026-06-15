@@ -42,7 +42,7 @@ import {
 import {
   MetalWeightCalculatorModal,
   parseDecimalInput,
-} from './components/MetalWeightCalculatorModal';
+} from "./components/MetalWeightCalculatorModal";
 import {
   solicitarAlmacenamientoPersistente,
   textoEstadoAlmacenamiento,
@@ -85,15 +85,7 @@ function App() {
   const [driveConectado, setDriveConectado] = useState(false);
   const [driveTrabajando, setDriveTrabajando] = useState(false);
 
-  const [mostrarCalculadoraMetales, setMostrarCalculadoraMetales] =
-    useState(false);
-  const [cantidadCalculadoraMetales, setCantidadCalculadoraMetales] =
-    useState(0);
-
   const inputBackupRef = useRef<HTMLInputElement | null>(null);
-  const cantidadNuevoProductoRef = useRef<HTMLInputElement | null>(null);
-  const pesoTotalNuevoProductoRef = useRef<HTMLInputElement | null>(null);
-  const noAbrirCalculadoraMetalesHastaSalirDelCampoRef = useRef(false);
 
   async function cargarPresupuestos() {
     const datos = await listarPresupuestos();
@@ -394,55 +386,11 @@ function App() {
     }
   }
 
-  function abrirCalculadoraMetalesSiCorresponde() {
-    if (noAbrirCalculadoraMetalesHastaSalirDelCampoRef.current) {
-      return;
-    }
-
-    const pesoActual = parseDecimalInput(pesoTotalNuevoProductoRef.current?.value);
-
-    if (pesoActual !== 0) {
-      return;
-    }
-
-    const cantidadActual = parseDecimalInput(cantidadNuevoProductoRef.current?.value);
-
-    setCantidadCalculadoraMetales(cantidadActual);
-    setMostrarCalculadoraMetales(true);
-  }
-
-  function habilitarAperturaCalculadoraMetales() {
-    noAbrirCalculadoraMetalesHastaSalirDelCampoRef.current = false;
-  }
-
-  function cerrarCalculadoraMetalesParaCargaManual() {
-    noAbrirCalculadoraMetalesHastaSalirDelCampoRef.current = true;
-    setMostrarCalculadoraMetales(false);
-
-    window.setTimeout(() => {
-      pesoTotalNuevoProductoRef.current?.focus();
-    }, 0);
-  }
-
-  function aplicarPesoCalculado(totalWeightKg: number) {
-    if (!pesoTotalNuevoProductoRef.current) {
-      setMostrarCalculadoraMetales(false);
-      return;
-    }
-
-    pesoTotalNuevoProductoRef.current.value = totalWeightKg.toFixed(4);
-    noAbrirCalculadoraMetalesHastaSalirDelCampoRef.current = false;
-    setMostrarCalculadoraMetales(false);
-    setMensaje('Peso total calculado y cargado.');
-  }
-
   function volverInicio() {
     setPantalla('inicio');
     setPresupuestoActual(null);
     setLineas([]);
     setMensaje('');
-    setMostrarCalculadoraMetales(false);
-    noAbrirCalculadoraMetalesHastaSalirDelCampoRef.current = false;
     cargarPresupuestos();
   }
 
@@ -636,7 +584,6 @@ function App() {
               <label className="field-label">
                 Cantidad
                 <input
-                  ref={cantidadNuevoProductoRef}
                   name="cantidad"
                   className="text-input"
                   inputMode="numeric"
@@ -660,15 +607,11 @@ function App() {
               <label className="field-label">
                 Peso total
                 <input
-                  ref={pesoTotalNuevoProductoRef}
                   name="pesoTotal"
                   className="text-input"
                   inputMode="decimal"
                   autoComplete="off"
                   placeholder="0,0000"
-                  onFocus={abrirCalculadoraMetalesSiCorresponde}
-                  onClick={abrirCalculadoraMetalesSiCorresponde}
-                  onBlur={habilitarAperturaCalculadoraMetales}
                 />
               </label>
 
@@ -771,13 +714,6 @@ function App() {
             </div>
           </div>
         </section>
-
-        <MetalWeightCalculatorModal
-          isOpen={mostrarCalculadoraMetales}
-          quantity={cantidadCalculadoraMetales}
-          onApply={aplicarPesoCalculado}
-          onClose={cerrarCalculadoraMetalesParaCargaManual}
-        />
       </main>
     );
   }
