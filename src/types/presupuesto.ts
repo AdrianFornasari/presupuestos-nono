@@ -1,5 +1,4 @@
 export type EstadoPresupuesto = 'borrador' | 'emitido' | 'enviado' | 'anulado';
-
 export type EstadoDrive = 'tablet' | 'pendiente' | 'realizada';
 
 export interface Presupuesto {
@@ -34,8 +33,21 @@ export interface LineaPresupuesto {
   descripcion: string;
   cantidad: number;
   unidad: string;
+
   precioUnitario: number;
-  acumulado: number;
+
+  /**
+   * Campo vigente.
+   * En pantalla se muestra como "Peso total".
+   */
+  pesoTotal: number;
+
+  /**
+   * Campo viejo, conservado sólo por compatibilidad con datos ya guardados.
+   * No debe mostrarse como etiqueta en la interfaz.
+   */
+  acumulado?: number;
+
   subtotal: number;
 
   creadoEn: string;

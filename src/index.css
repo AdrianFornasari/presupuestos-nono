@@ -49,6 +49,11 @@ button {
   padding-right: 260px;
 }
 
+.single-line-title {
+  white-space: nowrap;
+  font-size: clamp(2rem, 6vw, 2.7rem);
+}
+
 .eyebrow {
   margin: 0 0 8px;
   font-size: 1.1rem;
@@ -61,6 +66,10 @@ button {
   margin: 0;
   font-size: 2.7rem;
   line-height: 1.05;
+}
+
+.screen-card h1.single-line-title {
+  font-size: clamp(2rem, 6vw, 2.7rem);
 }
 
 .subtitle {
@@ -267,7 +276,8 @@ button {
   outline-offset: 4px;
 }
 
-.two-column-grid {
+.two-column-grid,
+.client-two-column-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 18px;
@@ -383,6 +393,10 @@ button {
     grid-template-columns: 1fr;
   }
 
+  .client-two-column-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
   .home-card,
   .screen-card {
     padding: 24px;
@@ -398,5 +412,10 @@ button {
     right: 24px;
     left: 24px;
     max-width: none;
+  }
+
+  .single-line-title,
+  .screen-card h1.single-line-title {
+    font-size: clamp(1.75rem, 8vw, 2.3rem);
   }
 }

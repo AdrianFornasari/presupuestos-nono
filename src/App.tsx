@@ -32,6 +32,7 @@ import {
 } from './pdf/presupuestoPdfService';
 import type { LineaPresupuesto, Presupuesto } from './types/presupuesto';
 import {
+  formatearDecimal2SinMiles,
   formatearDecimal4,
   formatearEntero,
   formatearImporteUSD,
@@ -60,6 +61,10 @@ function formatearFechaLista(fechaISO: string): string {
   }
 
   return `${dia}/${mes}/${anio}`;
+}
+
+function obtenerPesoTotalLinea(linea: LineaPresupuesto): number {
+  return linea.pesoTotal ?? linea.acumulado ?? 0;
 }
 
 function App() {
@@ -141,9 +146,22 @@ function App() {
       formData.get('clienteDireccion') || '',
     ).trim();
     const clienteTelefono = String(formData.get('clienteTelefono') || '').trim();
-    const cotizacionUsdAl = String(
+    const cotizacionUsdAlTexto = String(
       formData.get('cotizacionUsdAl') || '',
     ).trim();
+
+    let cotizacionUsdAl = '';
+
+    if (cotizacionUsdAlTexto) {
+      const cotizacionNumero = parsearNumeroDecimal(cotizacionUsdAlTexto);
+
+      if (!Number.isFinite(cotizacionNumero) || cotizacionNumero <= 0) {
+        setMensaje('La cotización USD debe ser un número válido mayor que cero.');
+        return;
+      }
+
+      cotizacionUsdAl = formatearDecimal2SinMiles(cotizacionNumero);
+    }
 
     await actualizarDatosCliente(presupuestoActual.id, {
       clienteNombre,
@@ -168,7 +186,7 @@ function App() {
     const descripcion = String(formData.get('descripcion') || '').trim();
     const unidad = String(formData.get('unidad') || '').trim();
     const cantidad = parsearEntero(formData.get('cantidad'));
-    const acumulado = parsearNumeroDecimal(formData.get('acumulado'));
+    const pesoTotal = parsearNumeroDecimal(formData.get('pesoTotal'));
     const precioUnitario = parsearNumeroDecimal(formData.get('precioUnitario'));
 
     if (!descripcion) {
@@ -186,8 +204,8 @@ function App() {
       return;
     }
 
-    if (!Number.isFinite(acumulado) || acumulado < 0) {
-      setMensaje('El acumulado debe ser un número válido con hasta 4 decimales.');
+    if (!Number.isFinite(pesoTotal) || pesoTotal < 0) {
+      setMensaje('El peso total debe ser un número válido con hasta 4 decimales.');
       return;
     }
 
@@ -201,7 +219,7 @@ function App() {
       cantidad,
       unidad,
       precioUnitario,
-      acumulado,
+      pesoTotal,
     });
 
     form.reset();
@@ -379,7 +397,7 @@ function App() {
           </button>
 
           <div className="app-header">
-            <h1>Seguridad de datos</h1>
+            <h1 className="single-line-title">Seguridad de datos</h1>
           </div>
 
           {mensaje && <div className="message-box">{mensaje}</div>}
@@ -510,26 +528,29 @@ function App() {
               />
             </label>
 
-            <label className="field-label">
-              Teléfono
-              <input
-                name="clienteTelefono"
-                defaultValue={presupuestoActual.clienteTelefono}
-                className="text-input"
-                autoComplete="off"
-              />
-            </label>
+            <div className="client-two-column-grid">
+              <label className="field-label">
+                Teléfono
+                <input
+                  name="clienteTelefono"
+                  defaultValue={presupuestoActual.clienteTelefono}
+                  className="text-input"
+                  autoComplete="off"
+                />
+              </label>
 
-            <label className="field-label">
-              Cotización USD al
-              <input
-                name="cotizacionUsdAl"
-                defaultValue={presupuestoActual.cotizacionUsdAl}
-                className="text-input"
-                autoComplete="off"
-                placeholder="Ej: 07/06/2026"
-              />
-            </label>
+              <label className="field-label">
+                Cotización USD
+                <input
+                  name="cotizacionUsdAl"
+                  defaultValue={presupuestoActual.cotizacionUsdAl}
+                  className="text-input"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  placeholder="0,00"
+                />
+              </label>
+            </div>
 
             <button type="submit" className="primary-button">
               Guardar cliente
@@ -574,9 +595,9 @@ function App() {
 
             <div className="two-column-grid">
               <label className="field-label">
-                Acumulado
+                Peso total
                 <input
-                  name="acumulado"
+                  name="pesoTotal"
                   className="text-input"
                   inputMode="decimal"
                   autoComplete="off"
@@ -608,50 +629,55 @@ function App() {
               <p className="empty-text">Todavía no hay productos cargados.</p>
             ) : (
               <div className="line-list">
-                {lineas.map((linea) => (
-                  <article key={linea.id} className="product-card">
-                    <div className="product-card-title">
-                      <strong>{linea.orden}</strong>
-                      <span>-</span>
-                      <strong>{linea.descripcion}</strong>
-                    </div>
+                {lineas.map((linea) => {
+                  const pesoTotal = obtenerPesoTotalLinea(linea);
 
-                    <div className="product-card-row">
-                      <span>
-                        Cantidad: <strong>{formatearEntero(linea.cantidad)}</strong>
-                      </span>
+                  return (
+                    <article key={linea.id} className="product-card">
+                      <div className="product-card-title">
+                        <strong>{linea.orden}</strong>
+                        <span>-</span>
+                        <strong>{linea.descripcion}</strong>
+                      </div>
 
-                      <span>
-                        Unidad: <strong>{linea.unidad}</strong>
-                      </span>
-                    </div>
+                      <div className="product-card-row">
+                        <span>
+                          Cantidad:{' '}
+                          <strong>{formatearEntero(linea.cantidad)}</strong>
+                        </span>
 
-                    <div className="product-card-row">
-                      <span>
-                        Acumulado:{' '}
-                        <strong>{formatearDecimal4(linea.acumulado ?? 0)}</strong>
-                      </span>
+                        <span>
+                          Unidad: <strong>{linea.unidad}</strong>
+                        </span>
+                      </div>
 
-                      <span>
-                        Precio unit.: u$s{' '}
-                        <strong>{formatearDecimal4(linea.precioUnitario)}</strong>
-                      </span>
-                    </div>
+                      <div className="product-card-row">
+                        <span>
+                          Peso total:{' '}
+                          <strong>{formatearDecimal4(pesoTotal)}</strong>
+                        </span>
 
-                    <div className="product-card-subtotal">
-                      Subtotal: u$s{' '}
-                      <strong>{formatearImporteUSD(linea.subtotal)}</strong>
-                    </div>
+                        <span>
+                          Precio unit.: u$s{' '}
+                          <strong>{formatearDecimal4(linea.precioUnitario)}</strong>
+                        </span>
+                      </div>
 
-                    <button
-                      type="button"
-                      className="danger-button product-card-delete"
-                      onClick={() => borrarLinea(linea.id)}
-                    >
-                      Eliminar
-                    </button>
-                  </article>
-                ))}
+                      <div className="product-card-subtotal">
+                        Subtotal: u$s{' '}
+                        <strong>{formatearImporteUSD(linea.subtotal)}</strong>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="danger-button product-card-delete"
+                        onClick={() => borrarLinea(linea.id)}
+                      >
+                        Eliminar
+                      </button>
+                    </article>
+                  );
+                })}
               </div>
             )}
           </div>

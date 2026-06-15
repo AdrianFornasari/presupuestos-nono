@@ -1,108 +1,142 @@
-import type { ConfiguracionApp, Presupuesto } from '../types/presupuesto';
-import {
-  fechaHoraAhoraISO,
-  fechaHoyISO,
-  formatearNumeroPresupuesto,
-} from '../utils/format';
+import type { LineaPresupuesto } from '../types/presupuesto';
+import { fechaHoraAhoraISO, redondearImporte } from '../utils/format';
 import { db } from './appDb';
 
-const CONFIG_ID = 'principal' as const;
-
-async function obtenerOInicializarConfiguracion(): Promise<ConfiguracionApp> {
-  const existente = await db.configuracion.get(CONFIG_ID);
-
-  if (existente) {
-    return existente;
-  }
-
-  const ahora = fechaHoraAhoraISO();
-
-  const nuevaConfiguracion: ConfiguracionApp = {
-    id: CONFIG_ID,
-    proximoNumero: 1,
-    vendedor: 'CARLOS CENTENO',
-    moneda: 'USD',
-    tamanoTexto: 'muy-grande',
-    creadoEn: ahora,
-    actualizadoEn: ahora,
-  };
-
-  await db.configuracion.put(nuevaConfiguracion);
-
-  return nuevaConfiguracion;
+interface NuevaLineaPresupuesto {
+  descripcion: string;
+  cantidad: number;
+  unidad: string;
+  precioUnitario: number;
+  pesoTotal: number;
 }
 
-export async function listarPresupuestos(): Promise<Presupuesto[]> {
-  return db.presupuestos.orderBy('actualizadoEn').reverse().toArray();
+function obtenerPesoTotalLinea(linea: LineaPresupuesto): number {
+  return linea.pesoTotal ?? linea.acumulado ?? 0;
 }
 
-export async function obtenerPresupuestoPorId(
-  id: string,
-): Promise<Presupuesto | undefined> {
-  return db.presupuestos.get(id);
+function calcularSubtotalLinea(linea: LineaPresupuesto): number {
+  return redondearImporte(obtenerPesoTotalLinea(linea) * linea.precioUnitario);
 }
 
-export async function crearPresupuestoBorrador(): Promise<Presupuesto> {
-  const configuracion = await obtenerOInicializarConfiguracion();
-  const ahora = fechaHoraAhoraISO();
-  const numero = configuracion.proximoNumero;
+export async function listarLineasPorPresupuesto(
+  presupuestoId: string,
+): Promise<LineaPresupuesto[]> {
+  const lineas = await db.lineasPresupuesto
+    .where('presupuestoId')
+    .equals(presupuestoId)
+    .sortBy('orden');
 
-  const presupuesto: Presupuesto = {
-    id: crypto.randomUUID(),
-    numero,
-    numeroFormateado: formatearNumeroPresupuesto(numero),
-    fechaEmision: fechaHoyISO(),
+  return lineas.map((linea) => {
+    const pesoTotal = obtenerPesoTotalLinea(linea);
+    const subtotal = redondearImporte(pesoTotal * linea.precioUnitario);
 
-    clienteNombre: '',
-    clienteDireccion: '',
-    clienteTelefono: '',
-
-    moneda: configuracion.moneda,
-    vendedor: configuracion.vendedor,
-    cotizacionUsdAl: '',
-
-    subtotal: 0,
-    total: 0,
-
-    estado: 'borrador',
-    estadoDrive: 'tablet',
-
-    creadoEn: ahora,
-    actualizadoEn: ahora,
-  };
-
-  await db.transaction('rw', db.presupuestos, db.configuracion, async () => {
-    await db.presupuestos.put(presupuesto);
-
-    await db.configuracion.update(CONFIG_ID, {
-      proximoNumero: numero + 1,
-      actualizadoEn: ahora,
-    });
+    return {
+      ...linea,
+      pesoTotal,
+      acumulado: pesoTotal,
+      subtotal,
+    };
   });
-
-  return presupuesto;
 }
 
-export async function actualizarDatosCliente(
-  id: string,
-  datos: {
-    clienteNombre: string;
-    clienteDireccion: string;
-    clienteTelefono: string;
-    cotizacionUsdAl: string;
-  },
+export async function agregarLineaPresupuesto(
+  presupuestoId: string,
+  datos: NuevaLineaPresupuesto,
 ): Promise<void> {
-  await db.presupuestos.update(id, {
-    ...datos,
-    estadoDrive: 'pendiente',
-    actualizadoEn: fechaHoraAhoraISO(),
-  });
+  const ahora = fechaHoraAhoraISO();
+
+  await db.transaction(
+    'rw',
+    db.lineasPresupuesto,
+    db.presupuestos,
+    async () => {
+      const lineasActuales = await db.lineasPresupuesto
+        .where('presupuestoId')
+        .equals(presupuestoId)
+        .toArray();
+
+      const orden =
+        lineasActuales.length === 0
+          ? 1
+          : Math.max(...lineasActuales.map((linea) => linea.orden)) + 1;
+
+      const subtotal = redondearImporte(
+        datos.pesoTotal * datos.precioUnitario,
+      );
+
+      const nuevaLinea: LineaPresupuesto = {
+        id: crypto.randomUUID(),
+        presupuestoId,
+        orden,
+        descripcion: datos.descripcion,
+        cantidad: datos.cantidad,
+        unidad: datos.unidad,
+        precioUnitario: datos.precioUnitario,
+        pesoTotal: datos.pesoTotal,
+        acumulado: datos.pesoTotal,
+        subtotal,
+        creadoEn: ahora,
+        actualizadoEn: ahora,
+      };
+
+      await db.lineasPresupuesto.put(nuevaLinea);
+      await recalcularTotalPresupuestoDentroTransaccion(presupuestoId);
+    },
+  );
 }
 
-export async function marcarPresupuestoEmitido(id: string): Promise<void> {
-  await db.presupuestos.update(id, {
-    estado: 'emitido',
+export async function eliminarLineaPresupuesto(
+  presupuestoId: string,
+  lineaId: string,
+): Promise<void> {
+  await db.transaction(
+    'rw',
+    db.lineasPresupuesto,
+    db.presupuestos,
+    async () => {
+      await db.lineasPresupuesto.delete(lineaId);
+      await reordenarLineasDentroTransaccion(presupuestoId);
+      await recalcularTotalPresupuestoDentroTransaccion(presupuestoId);
+    },
+  );
+}
+
+async function reordenarLineasDentroTransaccion(
+  presupuestoId: string,
+): Promise<void> {
+  const lineas = await db.lineasPresupuesto
+    .where('presupuestoId')
+    .equals(presupuestoId)
+    .sortBy('orden');
+
+  await Promise.all(
+    lineas.map((linea, index) =>
+      db.lineasPresupuesto.update(linea.id, {
+        orden: index + 1,
+        actualizadoEn: fechaHoraAhoraISO(),
+      }),
+    ),
+  );
+}
+
+async function recalcularTotalPresupuestoDentroTransaccion(
+  presupuestoId: string,
+): Promise<void> {
+  const ahora = fechaHoraAhoraISO();
+
+  const lineas = await db.lineasPresupuesto
+    .where('presupuestoId')
+    .equals(presupuestoId)
+    .toArray();
+
+  const total = redondearImporte(
+    lineas.reduce((acum, linea) => acum + calcularSubtotalLinea(linea), 0),
+  );
+
+  await db.presupuestos.update(presupuestoId, {
+    subtotal: total,
+    total,
     estadoDrive: 'pendiente',
-    actualizadoEn: fechaHoraAhoraISO(),
+    actualizadoEn: ahora,
   });
 }
