@@ -172,6 +172,7 @@ function App() {
 
     await recargarPresupuestoActual(presupuestoActual.id);
     await cargarPresupuestos();
+
     setMensaje('Datos del cliente guardados.');
   }
 
@@ -505,7 +506,11 @@ function App() {
 
           {mensaje && <div className="message-box">{mensaje}</div>}
 
-          <form className="form-card" onSubmit={guardarCliente}>
+          <form
+            key={`cliente-${presupuestoActual.id}-${presupuestoActual.actualizadoEn}`}
+            className="form-card"
+            onSubmit={guardarCliente}
+          >
             <h2>Cliente y cotización</h2>
 
             <label className="field-label">

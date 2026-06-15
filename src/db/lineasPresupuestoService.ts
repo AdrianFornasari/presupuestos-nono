@@ -1,5 +1,5 @@
 import type { LineaPresupuesto } from '../types/presupuesto';
-import { fechaHoraAhoraISO } from '../utils/format';
+import { fechaHoraAhoraISO, redondearImporte } from '../utils/format';
 import { db } from './appDb';
 
 interface NuevaLineaPresupuesto {
@@ -7,16 +7,36 @@ interface NuevaLineaPresupuesto {
   cantidad: number;
   unidad: string;
   precioUnitario: number;
-  acumulado: number;
+  pesoTotal: number;
+}
+
+function obtenerPesoTotalLinea(linea: LineaPresupuesto): number {
+  return linea.pesoTotal ?? linea.acumulado ?? 0;
+}
+
+function calcularSubtotalLinea(linea: LineaPresupuesto): number {
+  return redondearImporte(obtenerPesoTotalLinea(linea) * linea.precioUnitario);
 }
 
 export async function listarLineasPorPresupuesto(
   presupuestoId: string,
 ): Promise<LineaPresupuesto[]> {
-  return db.lineasPresupuesto
+  const lineas = await db.lineasPresupuesto
     .where('presupuestoId')
     .equals(presupuestoId)
     .sortBy('orden');
+
+  return lineas.map((linea) => {
+    const pesoTotal = obtenerPesoTotalLinea(linea);
+    const subtotal = redondearImporte(pesoTotal * linea.precioUnitario);
+
+    return {
+      ...linea,
+      pesoTotal,
+      acumulado: pesoTotal,
+      subtotal,
+    };
+  });
 }
 
 export async function agregarLineaPresupuesto(
@@ -40,7 +60,9 @@ export async function agregarLineaPresupuesto(
           ? 1
           : Math.max(...lineasActuales.map((linea) => linea.orden)) + 1;
 
-      const subtotal = datos.cantidad * datos.precioUnitario;
+      const subtotal = redondearImporte(
+        datos.pesoTotal * datos.precioUnitario,
+      );
 
       const nuevaLinea: LineaPresupuesto = {
         id: crypto.randomUUID(),
@@ -50,7 +72,8 @@ export async function agregarLineaPresupuesto(
         cantidad: datos.cantidad,
         unidad: datos.unidad,
         precioUnitario: datos.precioUnitario,
-        acumulado: datos.acumulado,
+        pesoTotal: datos.pesoTotal,
+        acumulado: datos.pesoTotal,
         subtotal,
         creadoEn: ahora,
         actualizadoEn: ahora,
@@ -106,7 +129,9 @@ async function recalcularTotalPresupuestoDentroTransaccion(
     .equals(presupuestoId)
     .toArray();
 
-  const total = lineas.reduce((acum, linea) => acum + linea.subtotal, 0);
+  const total = redondearImporte(
+    lineas.reduce((acum, linea) => acum + calcularSubtotalLinea(linea), 0),
+  );
 
   await db.presupuestos.update(presupuestoId, {
     subtotal: total,
