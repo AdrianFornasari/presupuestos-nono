@@ -4,6 +4,7 @@ import {
   useState,
   type ChangeEvent,
   type FormEvent,
+  type KeyboardEvent,
 } from 'react';
 import MetalWeightCalculatorModal from './components/MetalWeightCalculatorModal';
 import {
@@ -79,6 +80,7 @@ function App() {
     useState<Presupuesto | null>(null);
   const [lineas, setLineas] = useState<LineaPresupuesto[]>([]);
   const [mensaje, setMensaje] = useState('');
+  const [avisoModal, setAvisoModal] = useState('');
   const [estadoAlmacenamiento, setEstadoAlmacenamiento] =
     useState<EstadoAlmacenamientoPersistente | null>(null);
 
@@ -229,7 +231,7 @@ function App() {
     }
 
     setCalculadoraAbierta(false);
-    setMensaje('Peso total calculado.');
+    setAvisoModal('Peso total calculado.');
   }
 
   async function agregarProducto(event: FormEvent<HTMLFormElement>) {
@@ -283,7 +285,9 @@ function App() {
 
     await recargarPresupuestoActual(presupuestoActual.id);
     await cargarPresupuestos();
-    setMensaje('Producto agregado.');
+
+    setMensaje('');
+    setAvisoModal('Producto agregado.');
   }
 
   async function borrarLinea(lineaId: string) {
@@ -442,12 +446,40 @@ function App() {
     setPresupuestoActual(null);
     setLineas([]);
     setMensaje('');
+    setAvisoModal('');
     cargarPresupuestos();
   }
+
+  function cerrarAvisoModal() {
+    setAvisoModal('');
+  }
+
+  function cerrarAvisoModalConTeclado(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      setAvisoModal('');
+    }
+  }
+
+  const avisoModalElemento = avisoModal ? (
+    <div
+      className="app-notice-backdrop"
+      role="button"
+      tabIndex={0}
+      onClick={cerrarAvisoModal}
+      onKeyDown={cerrarAvisoModalConTeclado}
+    >
+      <div className="app-notice-modal">
+        <strong>{avisoModal}</strong>
+        <span>Toque para cerrar</span>
+      </div>
+    </div>
+  ) : null;
 
   if (pantalla === 'configuracion') {
     return (
       <main className="app-shell">
+        {avisoModalElemento}
+
         <section className="screen-card">
           <button type="button" className="back-button" onClick={volverInicio}>
             Volver
@@ -542,17 +574,21 @@ function App() {
   if (pantalla === 'editar' && presupuestoActual) {
     return (
       <main className="app-shell">
-        <section className="screen-card">
-          <button type="button" className="back-button" onClick={volverInicio}>
-            Volver
-          </button>
+        {avisoModalElemento}
 
-          <div className="storage-status">
-            <span className="status-dot" />
-            <span>{textoEstadoDrive(presupuestoActual.estadoDrive)}</span>
+        <section className="screen-card">
+          <div className="top-actions-row">
+            <button type="button" className="back-button" onClick={volverInicio}>
+              Volver
+            </button>
+
+            <div className="storage-status storage-status-inline">
+              <span className="status-dot" />
+              <span>{textoEstadoDrive(presupuestoActual.estadoDrive)}</span>
+            </div>
           </div>
 
-          <div className="app-header">
+          <div className="app-header app-header-compact">
             <p className="eyebrow">Presupuesto</p>
             <h1>{presupuestoActual.numeroFormateado}</h1>
             <p className="subtitle">
@@ -783,6 +819,8 @@ function App() {
 
   return (
     <main className="app-shell">
+      {avisoModalElemento}
+
       <section className="home-card">
         <div className="storage-status">
           <span className="status-dot" />
