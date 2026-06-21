@@ -3,6 +3,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type FocusEvent,
   type FormEvent,
   type KeyboardEvent,
 } from 'react';
@@ -13,6 +14,7 @@ import {
   restaurarBackupDesdeArchivo,
 } from './db/backupService';
 import {
+  actualizarLineaPresupuesto,
   agregarLineaPresupuesto,
   eliminarLineaPresupuesto,
   listarLineasPorPresupuesto,
@@ -73,6 +75,20 @@ function formatearDecimal4SinMiles(valor: number): string {
   return valor.toFixed(4).replace('.', ',');
 }
 
+function normalizarTextoDecimal(valor: string, decimales: number): string {
+  const conComa = valor.replace(/\./g, ',').replace(/[^\d,]/g, '');
+  const partes = conComa.split(',');
+  const parteEntera = partes[0] ?? '';
+  const huboSeparador = partes.length > 1;
+  const parteDecimal = partes.slice(1).join('').slice(0, decimales);
+
+  if (!huboSeparador) {
+    return parteEntera;
+  }
+
+  return `${parteEntera},${parteDecimal}`;
+}
+
 function App() {
   const [pantalla, setPantalla] = useState<Pantalla>('inicio');
   const [presupuestos, setPresupuestos] = useState<Presupuesto[]>([]);
@@ -92,10 +108,18 @@ function App() {
   const [precioUnitarioParaCalculadora, setPrecioUnitarioParaCalculadora] =
     useState(0);
 
+  const [clienteEditando, setClienteEditando] = useState(false);
+  const [clienteDatosModificados, setClienteDatosModificados] = useState(false);
+
+  const [lineaEnEdicion, setLineaEnEdicion] =
+    useState<LineaPresupuesto | null>(null);
+  const [productoFormVersion, setProductoFormVersion] = useState(0);
+
   const inputBackupRef = useRef<HTMLInputElement | null>(null);
   const cantidadInputRef = useRef<HTMLInputElement | null>(null);
   const pesoTotalInputRef = useRef<HTMLInputElement | null>(null);
   const precioUnitarioInputRef = useRef<HTMLInputElement | null>(null);
+  const productoFormRef = useRef<HTMLFormElement | null>(null);
 
   async function cargarPresupuestos() {
     const datos = await listarPresupuestos();
@@ -128,6 +152,9 @@ function App() {
     const nuevo = await crearPresupuestoBorrador();
     setPresupuestoActual(nuevo);
     setLineas([]);
+    setClienteEditando(false);
+    setClienteDatosModificados(false);
+    setLineaEnEdicion(null);
     setPantalla('editar');
     setMensaje(`Presupuesto ${nuevo.numeroFormateado} creado.`);
     await cargarPresupuestos();
@@ -145,8 +172,57 @@ function App() {
 
     setPresupuestoActual(presupuesto);
     setLineas(lineasPresupuesto);
+    setClienteEditando(false);
+    setClienteDatosModificados(false);
+    setLineaEnEdicion(null);
     setPantalla('editar');
     setMensaje('');
+  }
+
+  function normalizarEntradaEntera(event: ChangeEvent<HTMLInputElement>) {
+    event.currentTarget.value = event.currentTarget.value.replace(/\D/g, '');
+  }
+
+  function normalizarEntradaDecimal4(event: ChangeEvent<HTMLInputElement>) {
+    event.currentTarget.value = normalizarTextoDecimal(
+      event.currentTarget.value,
+      4,
+    );
+  }
+
+  function normalizarEntradaDecimal2(event: ChangeEvent<HTMLInputElement>) {
+    event.currentTarget.value = normalizarTextoDecimal(
+      event.currentTarget.value,
+      2,
+    );
+  }
+
+  function completarCampoDecimal4(event: FocusEvent<HTMLInputElement>) {
+    const texto = event.currentTarget.value.trim();
+
+    if (!texto) return;
+
+    const numero = parsearNumeroDecimal(texto);
+
+    if (Number.isFinite(numero)) {
+      event.currentTarget.value = formatearDecimal4SinMiles(numero);
+    }
+  }
+
+  function completarCampoDecimal2(event: FocusEvent<HTMLInputElement>) {
+    const texto = event.currentTarget.value.trim();
+
+    if (!texto) return;
+
+    const numero = parsearNumeroDecimal(texto);
+
+    if (Number.isFinite(numero)) {
+      event.currentTarget.value = formatearDecimal2SinMiles(numero);
+    }
+  }
+
+  function marcarClienteModificado() {
+    setClienteDatosModificados(true);
   }
 
   async function guardarCliente(event: FormEvent<HTMLFormElement>) {
@@ -188,6 +264,8 @@ function App() {
     await recargarPresupuestoActual(presupuestoActual.id);
     await cargarPresupuestos();
 
+    setClienteDatosModificados(false);
+    setClienteEditando(false);
     setMensaje('Datos del cliente guardados.');
   }
 
@@ -234,6 +312,25 @@ function App() {
     setAvisoModal('Peso total calculado.');
   }
 
+  function cargarLineaParaEditar(linea: LineaPresupuesto) {
+    setLineaEnEdicion(linea);
+    setProductoFormVersion((version) => version + 1);
+    setMensaje('');
+
+    window.setTimeout(() => {
+      productoFormRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }, 50);
+  }
+
+  function cancelarEdicionProducto() {
+    setLineaEnEdicion(null);
+    setProductoFormVersion((version) => version + 1);
+    setMensaje('');
+  }
+
   async function agregarProducto(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -273,6 +370,30 @@ function App() {
       return;
     }
 
+    if (lineaEnEdicion) {
+      await actualizarLineaPresupuesto(
+        presupuestoActual.id,
+        lineaEnEdicion.id,
+        {
+          descripcion,
+          cantidad,
+          unidad,
+          precioUnitario,
+          pesoTotal,
+        },
+      );
+
+      setLineaEnEdicion(null);
+      setProductoFormVersion((version) => version + 1);
+
+      await recargarPresupuestoActual(presupuestoActual.id);
+      await cargarPresupuestos();
+
+      setMensaje('');
+      setAvisoModal('Producto actualizado.');
+      return;
+    }
+
     await agregarLineaPresupuesto(presupuestoActual.id, {
       descripcion,
       cantidad,
@@ -296,6 +417,11 @@ function App() {
     const confirmar = window.confirm('¿Eliminar esta línea del presupuesto?');
 
     if (!confirmar) return;
+
+    if (lineaEnEdicion?.id === lineaId) {
+      setLineaEnEdicion(null);
+      setProductoFormVersion((version) => version + 1);
+    }
 
     await eliminarLineaPresupuesto(presupuestoActual.id, lineaId);
     await recargarPresupuestoActual(presupuestoActual.id);
@@ -445,6 +571,9 @@ function App() {
     setPantalla('inicio');
     setPresupuestoActual(null);
     setLineas([]);
+    setClienteEditando(false);
+    setClienteDatosModificados(false);
+    setLineaEnEdicion(null);
     setMensaje('');
     setAvisoModal('');
     cargarPresupuestos();
@@ -572,6 +701,10 @@ function App() {
   }
 
   if (pantalla === 'editar' && presupuestoActual) {
+    const pesoTotalEdicion = lineaEnEdicion
+      ? obtenerPesoTotalLinea(lineaEnEdicion)
+      : 0;
+
     return (
       <main className="app-shell">
         {avisoModalElemento}
@@ -598,85 +731,126 @@ function App() {
 
           {mensaje && <div className="message-box">{mensaje}</div>}
 
-          <form
-            key={`cliente-${presupuestoActual.id}-${presupuestoActual.actualizadoEn}`}
-            className="form-card"
-            onSubmit={guardarCliente}
-          >
-            <h2>Cliente y cotización</h2>
+          <div className="form-card client-compact-card">
+            <div className="client-summary-row">
+              <div className="client-summary-name">
+                <span>Cliente</span>
+                <strong>
+                  {presupuestoActual.clienteNombre.trim() || 'Sin cliente'}
+                </strong>
+              </div>
 
-            <label className="field-label">
-              Nombre del cliente
-              <input
-                name="clienteNombre"
-                defaultValue={presupuestoActual.clienteNombre}
-                className="text-input"
-                autoComplete="off"
-              />
-            </label>
-
-            <label className="field-label">
-              Dirección
-              <input
-                name="clienteDireccion"
-                defaultValue={presupuestoActual.clienteDireccion}
-                className="text-input"
-                autoComplete="off"
-              />
-            </label>
-
-            <div className="client-two-column-grid">
-              <label className="field-label">
-                Teléfono
-                <input
-                  name="clienteTelefono"
-                  defaultValue={presupuestoActual.clienteTelefono}
-                  className="text-input"
-                  autoComplete="off"
-                />
-              </label>
-
-              <label className="field-label">
-                Cotización USD
-                <input
-                  name="cotizacionUsdAl"
-                  defaultValue={presupuestoActual.cotizacionUsdAl}
-                  className="text-input"
-                  inputMode="decimal"
-                  autoComplete="off"
-                  placeholder="0,00"
-                />
-              </label>
+              <button
+                type="button"
+                className="secondary-button compact-edit-button"
+                onClick={() => {
+                  setClienteEditando((actual) => !actual);
+                  setClienteDatosModificados(false);
+                  setMensaje('');
+                }}
+              >
+                Editar datos
+              </button>
             </div>
 
-            <button type="submit" className="primary-button">
-              Guardar cliente
-            </button>
-          </form>
+            {clienteEditando && (
+              <form
+                key={`cliente-${presupuestoActual.id}-${presupuestoActual.actualizadoEn}`}
+                className="client-edit-form"
+                onSubmit={guardarCliente}
+                onChange={marcarClienteModificado}
+              >
+                <label className="field-label">
+                  Nombre del cliente
+                  <input
+                    name="clienteNombre"
+                    defaultValue={presupuestoActual.clienteNombre}
+                    className="text-input"
+                    autoComplete="off"
+                  />
+                </label>
 
-          <form className="form-card" onSubmit={agregarProducto}>
-            <h2>Agregar producto</h2>
+                <label className="field-label">
+                  Dirección
+                  <input
+                    name="clienteDireccion"
+                    defaultValue={presupuestoActual.clienteDireccion}
+                    className="text-input"
+                    autoComplete="off"
+                  />
+                </label>
 
-            <label className="field-label">
+                <div className="client-two-column-grid">
+                  <label className="field-label">
+                    Teléfono
+                    <input
+                      name="clienteTelefono"
+                      defaultValue={presupuestoActual.clienteTelefono}
+                      className="text-input"
+                      autoComplete="off"
+                    />
+                  </label>
+
+                  <label className="field-label">
+                    Cotización USD
+                    <input
+                      name="cotizacionUsdAl"
+                      defaultValue={presupuestoActual.cotizacionUsdAl}
+                      className="text-input"
+                      inputMode="decimal"
+                      autoComplete="off"
+                      placeholder="0,00"
+                      onChange={normalizarEntradaDecimal2}
+                      onBlur={completarCampoDecimal2}
+                    />
+                  </label>
+                </div>
+
+                <button
+                  type="submit"
+                  className="primary-button"
+                  disabled={!clienteDatosModificados}
+                >
+                  Guardar datos
+                </button>
+              </form>
+            )}
+          </div>
+
+          <form
+            key={`producto-${lineaEnEdicion?.id ?? 'nuevo'}-${productoFormVersion}`}
+            ref={productoFormRef}
+            className="form-card product-form-card"
+            onSubmit={agregarProducto}
+          >
+            <h2>{lineaEnEdicion ? 'Editar producto' : 'Agregar producto'}</h2>
+
+            <label className="field-label product-full-field">
               Descripción del producto
               <textarea
                 name="descripcion"
-                className="text-area"
+                className="text-area product-text-area"
                 rows={2}
                 autoComplete="off"
+                defaultValue={lineaEnEdicion?.descripcion ?? ''}
               />
             </label>
 
-            <div className="two-column-grid">
+            <div className="product-two-column-grid">
               <label className="field-label">
                 Cantidad
                 <input
                   ref={cantidadInputRef}
                   name="cantidad"
-                  className="text-input"
+                  className="text-input product-number-input"
                   inputMode="numeric"
+                  pattern="[0-9]*"
                   autoComplete="off"
                   placeholder="Entero"
+                  onChange={normalizarEntradaEntera}
+                  defaultValue={
+                    lineaEnEdicion ? String(lineaEnEdicion.cantidad) : ''
+                  }
                 />
               </label>
 
@@ -685,42 +859,69 @@ function App() {
                 <input
                   ref={precioUnitarioInputRef}
                   name="precioUnitario"
-                  className="text-input"
+                  className="text-input product-number-input"
                   inputMode="decimal"
                   autoComplete="off"
                   placeholder="0,0000"
+                  onChange={normalizarEntradaDecimal4}
+                  onBlur={completarCampoDecimal4}
+                  defaultValue={
+                    lineaEnEdicion
+                      ? formatearDecimal4SinMiles(lineaEnEdicion.precioUnitario)
+                      : ''
+                  }
                 />
               </label>
             </div>
 
-            <div className="two-column-grid">
+            <div className="product-two-column-grid">
+              <label className="field-label">
+                Unidad
+                <input
+                  name="unidad"
+                  className="text-input product-number-input"
+                  autoComplete="off"
+                  placeholder="kg, un, m..."
+                  defaultValue={lineaEnEdicion?.unidad ?? ''}
+                />
+              </label>
+
               <label className="field-label">
                 Peso total
                 <input
                   ref={pesoTotalInputRef}
                   name="pesoTotal"
-                  className="text-input"
+                  className="text-input product-number-input"
                   inputMode="decimal"
                   autoComplete="off"
                   placeholder="0,0000"
                   onFocus={intentarAbrirCalculadoraPeso}
-                />
-              </label>
-
-              <label className="field-label">
-                Unidad
-                <input
-                  name="unidad"
-                  className="text-input"
-                  autoComplete="off"
-                  placeholder="kg, un, m..."
+                  onChange={normalizarEntradaDecimal4}
+                  onBlur={completarCampoDecimal4}
+                  defaultValue={
+                    lineaEnEdicion
+                      ? formatearDecimal4SinMiles(pesoTotalEdicion)
+                      : ''
+                  }
                 />
               </label>
             </div>
 
-            <button type="submit" className="primary-button">
-              Agregar producto
-            </button>
+            <div className="product-form-actions">
+              <button type="submit" className="primary-button">
+                {lineaEnEdicion ? 'Guardar cambios' : 'Agregar producto'}
+              </button>
+
+              {lineaEnEdicion && (
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={cancelarEdicionProducto}
+                >
+                  Cancelar edición
+                </button>
+              )}
+            </div>
           </form>
 
           <MetalWeightCalculatorModal
@@ -740,16 +941,22 @@ function App() {
               <div className="line-list">
                 {lineas.map((linea) => {
                   const pesoTotal = obtenerPesoTotalLinea(linea);
+                  const tituloProducto = `${linea.orden} - ${linea.descripcion}`;
 
                   return (
                     <article key={linea.id} className="product-card">
-                      <div className="product-card-title">
-                        <strong>{linea.orden}</strong>
-                        <span>-</span>
-                        <strong>{linea.descripcion}</strong>
+                      <div
+                        className="product-card-title"
+                        title={tituloProducto}
+                      >
+                        <span className="product-card-title-text">
+                          <strong>{linea.orden}</strong>
+                          <span> - </span>
+                          <span>{linea.descripcion}</span>
+                        </span>
                       </div>
 
-                      <div className="product-card-row">
+                      <div className="product-card-left-values">
                         <span>
                           Cantidad:{' '}
                           <strong>{formatearEntero(linea.cantidad)}</strong>
@@ -760,7 +967,7 @@ function App() {
                         </span>
                       </div>
 
-                      <div className="product-card-row">
+                      <div className="product-card-right-values">
                         <span>
                           Peso total:{' '}
                           <strong>{formatearDecimal4(pesoTotal)}</strong>
@@ -768,7 +975,9 @@ function App() {
 
                         <span>
                           Precio unit.: u$s{' '}
-                          <strong>{formatearDecimal4(linea.precioUnitario)}</strong>
+                          <strong>
+                            {formatearDecimal4(linea.precioUnitario)}
+                          </strong>
                         </span>
                       </div>
 
@@ -777,13 +986,23 @@ function App() {
                         <strong>{formatearImporteUSD(linea.subtotal)}</strong>
                       </div>
 
-                      <button
-                        type="button"
-                        className="danger-button product-card-delete"
-                        onClick={() => borrarLinea(linea.id)}
-                      >
-                        Eliminar
-                      </button>
+                      <div className="product-card-actions">
+                        <button
+                          type="button"
+                          className="secondary-button product-card-edit-button"
+                          onClick={() => cargarLineaParaEditar(linea)}
+                        >
+                          Editar
+                        </button>
+
+                        <button
+                          type="button"
+                          className="danger-button product-card-delete"
+                          onClick={() => borrarLinea(linea.id)}
+                        >
+                          Eliminar
+                        </button>
+                      </div>
                     </article>
                   );
                 })}

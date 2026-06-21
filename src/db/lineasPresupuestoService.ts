@@ -2,7 +2,7 @@ import type { LineaPresupuesto } from '../types/presupuesto';
 import { fechaHoraAhoraISO, redondearImporte } from '../utils/format';
 import { db } from './appDb';
 
-interface NuevaLineaPresupuesto {
+interface DatosLineaPresupuesto {
   descripcion: string;
   cantidad: number;
   unidad: string;
@@ -41,7 +41,7 @@ export async function listarLineasPorPresupuesto(
 
 export async function agregarLineaPresupuesto(
   presupuestoId: string,
-  datos: NuevaLineaPresupuesto,
+  datos: DatosLineaPresupuesto,
 ): Promise<void> {
   const ahora = fechaHoraAhoraISO();
 
@@ -80,6 +80,44 @@ export async function agregarLineaPresupuesto(
       };
 
       await db.lineasPresupuesto.put(nuevaLinea);
+      await recalcularTotalPresupuestoDentroTransaccion(presupuestoId);
+    },
+  );
+}
+
+export async function actualizarLineaPresupuesto(
+  presupuestoId: string,
+  lineaId: string,
+  datos: DatosLineaPresupuesto,
+): Promise<void> {
+  const ahora = fechaHoraAhoraISO();
+
+  await db.transaction(
+    'rw',
+    db.lineasPresupuesto,
+    db.presupuestos,
+    async () => {
+      const lineaExistente = await db.lineasPresupuesto.get(lineaId);
+
+      if (!lineaExistente || lineaExistente.presupuestoId !== presupuestoId) {
+        throw new Error('No se encontró el producto para editar.');
+      }
+
+      const subtotal = redondearImporte(
+        datos.pesoTotal * datos.precioUnitario,
+      );
+
+      await db.lineasPresupuesto.update(lineaId, {
+        descripcion: datos.descripcion,
+        cantidad: datos.cantidad,
+        unidad: datos.unidad,
+        precioUnitario: datos.precioUnitario,
+        pesoTotal: datos.pesoTotal,
+        acumulado: datos.pesoTotal,
+        subtotal,
+        actualizadoEn: ahora,
+      });
+
       await recalcularTotalPresupuestoDentroTransaccion(presupuestoId);
     },
   );

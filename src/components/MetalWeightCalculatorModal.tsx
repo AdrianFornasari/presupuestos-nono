@@ -1,4 +1,9 @@
-import { useMemo, useState, type ChangeEvent } from 'react';
+import {
+  useMemo,
+  useState,
+  type ChangeEvent,
+  type FocusEvent,
+} from 'react';
 import './MetalWeightCalculatorModal.css';
 
 type FormaMetal =
@@ -90,46 +95,22 @@ const PERFILES_NORMALIZADOS: Partial<Record<FormaMetal, PerfilNormalizado[]>> = 
     { id: 'ipn-300', etiqueta: 'IPN 300 - 54,10 kg/m', pesoKgPorMetro: 54.1 },
     { id: 'ipn-320', etiqueta: 'IPN 320 - 60,90 kg/m', pesoKgPorMetro: 60.9 },
     { id: 'ipn-340', etiqueta: 'IPN 340 - 67,90 kg/m', pesoKgPorMetro: 67.9 },
-    { id: 'ipn-360', etiqueta: 'IPN 360 - 76,00 kg/m', pesoKgPorMetro: 76.0 },
+    { id: 'ipn-360', etiqueta: 'IPN 360 - 76,00 kg/m', pesoKgPorMetro: 76 },
     { id: 'ipn-380', etiqueta: 'IPN 380 - 83,80 kg/m', pesoKgPorMetro: 83.8 },
     { id: 'ipn-400', etiqueta: 'IPN 400 - 92,40 kg/m', pesoKgPorMetro: 92.4 },
-    {
-      id: 'ipn-425',
-      etiqueta: 'IPN 425 - 103,40 kg/m',
-      pesoKgPorMetro: 103.4,
-    },
-    {
-      id: 'ipn-450',
-      etiqueta: 'IPN 450 - 115,20 kg/m',
-      pesoKgPorMetro: 115.2,
-    },
-    {
-      id: 'ipn-475',
-      etiqueta: 'IPN 475 - 127,70 kg/m',
-      pesoKgPorMetro: 127.7,
-    },
-    {
-      id: 'ipn-500',
-      etiqueta: 'IPN 500 - 140,20 kg/m',
-      pesoKgPorMetro: 140.2,
-    },
-    {
-      id: 'ipn-550',
-      etiqueta: 'IPN 550 - 166,10 kg/m',
-      pesoKgPorMetro: 166.1,
-    },
-    {
-      id: 'ipn-600',
-      etiqueta: 'IPN 600 - 199,00 kg/m',
-      pesoKgPorMetro: 199.0,
-    },
+    { id: 'ipn-425', etiqueta: 'IPN 425 - 103,40 kg/m', pesoKgPorMetro: 103.4 },
+    { id: 'ipn-450', etiqueta: 'IPN 450 - 115,20 kg/m', pesoKgPorMetro: 115.2 },
+    { id: 'ipn-475', etiqueta: 'IPN 475 - 127,70 kg/m', pesoKgPorMetro: 127.7 },
+    { id: 'ipn-500', etiqueta: 'IPN 500 - 140,20 kg/m', pesoKgPorMetro: 140.2 },
+    { id: 'ipn-550', etiqueta: 'IPN 550 - 166,10 kg/m', pesoKgPorMetro: 166.1 },
+    { id: 'ipn-600', etiqueta: 'IPN 600 - 199,00 kg/m', pesoKgPorMetro: 199 },
   ],
 
   'perfil-u': [
     { id: 'upn-80', etiqueta: 'UPN 80 - 8,60 kg/m', pesoKgPorMetro: 8.6 },
     { id: 'upn-100', etiqueta: 'UPN 100 - 10,60 kg/m', pesoKgPorMetro: 10.6 },
     { id: 'upn-120', etiqueta: 'UPN 120 - 13,30 kg/m', pesoKgPorMetro: 13.3 },
-    { id: 'upn-140', etiqueta: 'UPN 140 - 16,00 kg/m', pesoKgPorMetro: 16.0 },
+    { id: 'upn-140', etiqueta: 'UPN 140 - 16,00 kg/m', pesoKgPorMetro: 16 },
     { id: 'upn-160', etiqueta: 'UPN 160 - 18,80 kg/m', pesoKgPorMetro: 18.8 },
     { id: 'upn-180', etiqueta: 'UPN 180 - 21,90 kg/m', pesoKgPorMetro: 21.9 },
     { id: 'upn-200', etiqueta: 'UPN 200 - 25,20 kg/m', pesoKgPorMetro: 25.2 },
@@ -140,10 +121,34 @@ const PERFILES_NORMALIZADOS: Partial<Record<FormaMetal, PerfilNormalizado[]>> = 
     { id: 'upn-300', etiqueta: 'UPN 300 - 46,10 kg/m', pesoKgPorMetro: 46.1 },
     { id: 'upn-320', etiqueta: 'UPN 320 - 59,40 kg/m', pesoKgPorMetro: 59.4 },
     { id: 'upn-350', etiqueta: 'UPN 350 - 60,60 kg/m', pesoKgPorMetro: 60.6 },
-    { id: 'upn-380', etiqueta: 'UPN 380 - 63,00 kg/m', pesoKgPorMetro: 63.0 },
+    { id: 'upn-380', etiqueta: 'UPN 380 - 63,00 kg/m', pesoKgPorMetro: 63 },
     { id: 'upn-400', etiqueta: 'UPN 400 - 71,70 kg/m', pesoKgPorMetro: 71.7 },
   ],
 };
+
+function normalizarTextoDecimal(valor: string): string {
+  const conComa = valor.replace(/\./g, ',').replace(/[^\d,]/g, '');
+  const partes = conComa.split(',');
+  const parteEntera = partes[0] ?? '';
+  const huboSeparador = partes.length > 1;
+  const parteDecimal = partes.slice(1).join('').slice(0, 4);
+
+  if (!huboSeparador) {
+    return parteEntera;
+  }
+
+  return `${parteEntera},${parteDecimal}`;
+}
+
+function completarTextoDecimal4(valor: string): string {
+  const numero = parsearDecimal(valor);
+
+  if (!Number.isFinite(numero)) {
+    return valor;
+  }
+
+  return numero.toFixed(4).replace('.', ',');
+}
 
 function parsearDecimal(valor: string): number {
   const texto = valor.trim().replace(',', '.');
@@ -456,9 +461,18 @@ function MetalWeightCalculatorModal({
       : Number.NaN;
 
   function actualizarValor(event: ChangeEvent<HTMLInputElement>) {
+    const valorNormalizado = normalizarTextoDecimal(event.target.value);
+
     setValores((actual) => ({
       ...actual,
-      [event.target.name]: event.target.value,
+      [event.target.name]: valorNormalizado,
+    }));
+  }
+
+  function completarValor(event: FocusEvent<HTMLInputElement>) {
+    setValores((actual) => ({
+      ...actual,
+      [event.target.name]: completarTextoDecimal4(event.target.value),
     }));
   }
 
@@ -566,6 +580,7 @@ function MetalWeightCalculatorModal({
                   name="largoMm"
                   value={valores.largoMm}
                   onChange={actualizarValor}
+                  onBlur={completarValor}
                   inputMode="decimal"
                   placeholder="0,0000"
                 />
@@ -581,6 +596,7 @@ function MetalWeightCalculatorModal({
                   name="anchoMm"
                   value={valores.anchoMm}
                   onChange={actualizarValor}
+                  onBlur={completarValor}
                   inputMode="decimal"
                   placeholder="0,0000"
                 />
@@ -592,6 +608,7 @@ function MetalWeightCalculatorModal({
                   name="largoMm"
                   value={valores.largoMm}
                   onChange={actualizarValor}
+                  onBlur={completarValor}
                   inputMode="decimal"
                   placeholder="0,0000"
                 />
@@ -603,6 +620,7 @@ function MetalWeightCalculatorModal({
                   name="espesorMm"
                   value={valores.espesorMm}
                   onChange={actualizarValor}
+                  onBlur={completarValor}
                   inputMode="decimal"
                   placeholder="0,0000"
                 />
@@ -618,6 +636,7 @@ function MetalWeightCalculatorModal({
                   name="diametroMm"
                   value={valores.diametroMm}
                   onChange={actualizarValor}
+                  onBlur={completarValor}
                   inputMode="decimal"
                   placeholder="0,0000"
                 />
@@ -629,6 +648,7 @@ function MetalWeightCalculatorModal({
                   name="largoMm"
                   value={valores.largoMm}
                   onChange={actualizarValor}
+                  onBlur={completarValor}
                   inputMode="decimal"
                   placeholder="0,0000"
                 />
@@ -648,6 +668,7 @@ function MetalWeightCalculatorModal({
                     name="altoTotalMm"
                     value={valores.altoTotalMm}
                     onChange={actualizarValor}
+                    onBlur={completarValor}
                     inputMode="decimal"
                     placeholder="0,0000"
                   />
@@ -659,6 +680,7 @@ function MetalWeightCalculatorModal({
                     name="anchoAlaMm"
                     value={valores.anchoAlaMm}
                     onChange={actualizarValor}
+                    onBlur={completarValor}
                     inputMode="decimal"
                     placeholder="0,0000"
                   />
@@ -670,6 +692,7 @@ function MetalWeightCalculatorModal({
                     name="espesorAlaMm"
                     value={valores.espesorAlaMm}
                     onChange={actualizarValor}
+                    onBlur={completarValor}
                     inputMode="decimal"
                     placeholder="0,0000"
                   />
@@ -681,6 +704,7 @@ function MetalWeightCalculatorModal({
                     name="espesorAlmaMm"
                     value={valores.espesorAlmaMm}
                     onChange={actualizarValor}
+                    onBlur={completarValor}
                     inputMode="decimal"
                     placeholder="0,0000"
                   />
@@ -692,6 +716,7 @@ function MetalWeightCalculatorModal({
                     name="largoMm"
                     value={valores.largoMm}
                     onChange={actualizarValor}
+                    onBlur={completarValor}
                     inputMode="decimal"
                     placeholder="0,0000"
                   />
