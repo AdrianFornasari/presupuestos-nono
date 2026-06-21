@@ -140,13 +140,25 @@ function App() {
     setLineas(lineasPresupuesto);
   }
 
-  useEffect(() => {
-    cargarPresupuestos();
+useEffect(() => {
+  let cancelado = false;
 
-    solicitarAlmacenamientoPersistente().then((estado) => {
+  void listarPresupuestos().then((datos) => {
+    if (!cancelado) {
+      setPresupuestos(datos);
+    }
+  });
+
+  void solicitarAlmacenamientoPersistente().then((estado) => {
+    if (!cancelado) {
       setEstadoAlmacenamiento(estado);
-    });
-  }, []);
+    }
+  });
+
+  return () => {
+    cancelado = true;
+  };
+}, []);
 
   async function manejarNuevoPresupuesto() {
     const nuevo = await crearPresupuestoBorrador();
