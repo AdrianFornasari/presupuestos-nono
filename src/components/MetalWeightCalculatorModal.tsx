@@ -11,9 +11,13 @@ type FormaMetal =
   | 'perfil-t'
   | 'perfil-doble-t'
   | 'perfil-u'
-  | 'chapa';
+  | 'perfil-c'
+  | 'chapa'
+  | 'chapa-techo';
 
 type ModoCalculoPerfil = 'tabla' | 'manual';
+type TipoChapaTecho = 'acanalada' | 'trapezoidal';
+type MaterialChapaTecho = 'galvanizada' | 'negra';
 
 interface MetalWeightCalculatorModalProps {
   abierto: boolean;
@@ -30,6 +34,7 @@ interface PerfilNormalizado {
 }
 
 const DENSIDAD_ACERO_KG_M3 = 7850;
+const LARGO_DEFAULT_PERFILES = '12000,0000';
 
 const PERFILES_NORMALIZADOS: Partial<Record<FormaMetal, PerfilNormalizado[]>> = {
   'perfil-t': [
@@ -124,7 +129,103 @@ const PERFILES_NORMALIZADOS: Partial<Record<FormaMetal, PerfilNormalizado[]>> = 
     { id: 'upn-380', etiqueta: 'UPN 380 - 63,00 kg/m', pesoKgPorMetro: 63 },
     { id: 'upn-400', etiqueta: 'UPN 400 - 71,70 kg/m', pesoKgPorMetro: 71.7 },
   ],
+
+  'perfil-c': [
+    {
+      id: 'c-80-40-15-1-6',
+      etiqueta: 'C 80 x 40 x 15 x 1,60 - 2,27 kg/m',
+      pesoKgPorMetro: 2.27,
+    },
+    {
+      id: 'c-100-40-15-1-6',
+      etiqueta: 'C 100 x 40 x 15 x 1,60 - 2,50 kg/m',
+      pesoKgPorMetro: 2.5,
+    },
+    {
+      id: 'c-80-40-15-2-0',
+      etiqueta: 'C 80 x 40 x 15 x 2,00 - 2,88 kg/m',
+      pesoKgPorMetro: 2.88,
+    },
+    {
+      id: 'c-100-40-15-2-0',
+      etiqueta: 'C 100 x 40 x 15 x 2,00 - 3,33 kg/m',
+      pesoKgPorMetro: 3.33,
+    },
+    {
+      id: 'c-120-50-15-2-0',
+      etiqueta: 'C 120 x 50 x 15 x 2,00 - 3,96 kg/m',
+      pesoKgPorMetro: 3.96,
+    },
+    {
+      id: 'c-140-60-20-2-0',
+      etiqueta: 'C 140 x 60 x 20 x 2,00 - 4,46 kg/m',
+      pesoKgPorMetro: 4.46,
+    },
+    {
+      id: 'c-160-60-20-2-0',
+      etiqueta: 'C 160 x 60 x 20 x 2,00 - 4,90 kg/m',
+      pesoKgPorMetro: 4.9,
+    },
+    {
+      id: 'c-180-70-25-2-0',
+      etiqueta: 'C 180 x 70 x 25 x 2,00 - 5,45 kg/m',
+      pesoKgPorMetro: 5.45,
+    },
+    {
+      id: 'c-200-80-25-2-0',
+      etiqueta: 'C 200 x 80 x 25 x 2,00 - 6,03 kg/m',
+      pesoKgPorMetro: 6.03,
+    },
+    {
+      id: 'c-120-50-15-2-5',
+      etiqueta: 'C 120 x 50 x 15 x 2,50 - 4,95 kg/m',
+      pesoKgPorMetro: 4.95,
+    },
+    {
+      id: 'c-140-60-20-2-5',
+      etiqueta: 'C 140 x 60 x 20 x 2,50 - 5,80 kg/m',
+      pesoKgPorMetro: 5.8,
+    },
+    {
+      id: 'c-160-60-20-2-5',
+      etiqueta: 'C 160 x 60 x 20 x 2,50 - 6,25 kg/m',
+      pesoKgPorMetro: 6.25,
+    },
+    {
+      id: 'c-180-70-25-2-5',
+      etiqueta: 'C 180 x 70 x 25 x 2,50 - 6,90 kg/m',
+      pesoKgPorMetro: 6.9,
+    },
+    {
+      id: 'c-200-80-25-2-5',
+      etiqueta: 'C 200 x 80 x 25 x 2,50 - 7,60 kg/m',
+      pesoKgPorMetro: 7.6,
+    },
+    {
+      id: 'c-220-80-25-3-2',
+      etiqueta: 'C 220 x 80 x 25 x 3,20 - 10,30 kg/m',
+      pesoKgPorMetro: 10.3,
+    },
+    {
+      id: 'c-240-80-25-3-2',
+      etiqueta: 'C 240 x 80 x 25 x 3,20 - 11,00 kg/m',
+      pesoKgPorMetro: 11,
+    },
+  ],
 };
+
+function esPerfil(forma: FormaMetal): boolean {
+  return (
+    forma === 'perfil-t' ||
+    forma === 'perfil-doble-t' ||
+    forma === 'perfil-u' ||
+    forma === 'perfil-c'
+  );
+}
+
+function esCotizacionPorMetro(forma: FormaMetal): boolean {
+  return forma === 'chapa-techo';
+}
 
 function normalizarTextoDecimal(valor: string): string {
   const conComa = valor.replace(/\./g, ',').replace(/[^\d,]/g, '');
@@ -251,7 +352,20 @@ function areaPerfilUMm2(
   );
 }
 
-function calcularPesoUnitarioKg(
+function areaPerfilCMm2(
+  altoTotalMm: number,
+  anchoAlaMm: number,
+  pestanaMm: number,
+  espesorMm: number,
+): number {
+  return (
+    altoTotalMm * espesorMm +
+    2 * anchoAlaMm * espesorMm +
+    2 * pestanaMm * espesorMm
+  );
+}
+
+function calcularValorUnitario(
   forma: FormaMetal,
   modoCalculoPerfil: ModoCalculoPerfil,
   perfilNormalizadoId: string,
@@ -260,6 +374,10 @@ function calcularPesoUnitarioKg(
   const largoMm = parsearDecimal(valores.largoMm);
 
   if (!Number.isFinite(largoMm) || largoMm <= 0) return Number.NaN;
+
+  if (forma === 'chapa-techo') {
+    return largoMm / 1000;
+  }
 
   const perfilesNormalizados = obtenerPerfilesNormalizados(forma);
   const permiteTabla = perfilesNormalizados.length > 0;
@@ -401,12 +519,43 @@ function calcularPesoUnitarioKg(
     return volumenM3 * DENSIDAD_ACERO_KG_M3;
   }
 
+  if (forma === 'perfil-c') {
+    const altoTotalMm = parsearDecimal(valores.altoTotalMm);
+    const anchoAlaMm = parsearDecimal(valores.anchoAlaMm);
+    const pestanaMm = parsearDecimal(valores.pestanaMm);
+    const espesorMm = parsearDecimal(valores.espesorMm);
+
+    if (
+      !Number.isFinite(altoTotalMm) ||
+      !Number.isFinite(anchoAlaMm) ||
+      !Number.isFinite(pestanaMm) ||
+      !Number.isFinite(espesorMm) ||
+      altoTotalMm <= 0 ||
+      anchoAlaMm <= 0 ||
+      pestanaMm <= 0 ||
+      espesorMm <= 0
+    ) {
+      return Number.NaN;
+    }
+
+    const areaMm2 = areaPerfilCMm2(
+      altoTotalMm,
+      anchoAlaMm,
+      pestanaMm,
+      espesorMm,
+    );
+
+    const volumenM3 = mm3AM3(areaMm2 * largoMm);
+
+    return volumenM3 * DENSIDAD_ACERO_KG_M3;
+  }
+
   return Number.NaN;
 }
 
-function valoresIniciales(): Record<string, string> {
+function valoresIniciales(forma: FormaMetal): Record<string, string> {
   return {
-    largoMm: '',
+    largoMm: esPerfil(forma) ? LARGO_DEFAULT_PERFILES : '',
     anchoMm: '',
     espesorMm: '',
     diametroMm: '',
@@ -414,6 +563,7 @@ function valoresIniciales(): Record<string, string> {
     anchoAlaMm: '',
     espesorAlaMm: '',
     espesorAlmaMm: '',
+    pestanaMm: '',
   };
 }
 
@@ -426,10 +576,14 @@ function MetalWeightCalculatorModal({
 }: MetalWeightCalculatorModalProps) {
   const [forma, setForma] = useState<FormaMetal>('hierro-redondo');
   const [modoCalculoPerfil, setModoCalculoPerfil] =
-    useState<ModoCalculoPerfil>('tabla');
+    useState<ModoCalculoPerfil>('manual');
   const [perfilNormalizadoId, setPerfilNormalizadoId] = useState('');
+  const [tipoChapaTecho, setTipoChapaTecho] =
+    useState<TipoChapaTecho>('acanalada');
+  const [materialChapaTecho, setMaterialChapaTecho] =
+    useState<MaterialChapaTecho>('galvanizada');
   const [valores, setValores] = useState<Record<string, string>>(
-    valoresIniciales(),
+    valoresIniciales('hierro-redondo'),
   );
 
   const perfilesNormalizados = obtenerPerfilesNormalizados(forma);
@@ -439,9 +593,9 @@ function MetalWeightCalculatorModal({
     perfilNormalizadoId,
   );
 
-  const pesoUnitarioKg = useMemo(
+  const valorUnitario = useMemo(
     () =>
-      calcularPesoUnitarioKg(
+      calcularValorUnitario(
         forma,
         modoCalculoPerfil,
         perfilNormalizadoId,
@@ -450,15 +604,19 @@ function MetalWeightCalculatorModal({
     [forma, modoCalculoPerfil, perfilNormalizadoId, valores],
   );
 
-  const pesoTotalKg =
-    Number.isFinite(pesoUnitarioKg) && cantidad > 0
-      ? pesoUnitarioKg * cantidad
+  const valorTotal =
+    Number.isFinite(valorUnitario) && cantidad > 0
+      ? valorUnitario * cantidad
       : Number.NaN;
 
   const subtotal =
-    Number.isFinite(pesoTotalKg) && precioUnitario > 0
-      ? pesoTotalKg * precioUnitario
+    Number.isFinite(valorTotal) && precioUnitario > 0
+      ? valorTotal * precioUnitario
       : Number.NaN;
+
+  const cotizaPorMetro = esCotizacionPorMetro(forma);
+  const unidadResultado = cotizaPorMetro ? 'm' : 'kg';
+  const etiquetaTotal = cotizaPorMetro ? 'Metros totales' : 'Peso total';
 
   function actualizarValor(event: ChangeEvent<HTMLInputElement>) {
     const valorNormalizado = normalizarTextoDecimal(event.target.value);
@@ -480,7 +638,7 @@ function MetalWeightCalculatorModal({
     const nuevaForma = event.target.value as FormaMetal;
 
     setForma(nuevaForma);
-    setValores(valoresIniciales());
+    setValores(valoresIniciales(nuevaForma));
 
     const primerPerfilId = obtenerPrimerPerfilId(nuevaForma);
 
@@ -504,17 +662,17 @@ function MetalWeightCalculatorModal({
   }
 
   function aceptar() {
-    if (!Number.isFinite(pesoTotalKg) || pesoTotalKg <= 0) {
+    if (!Number.isFinite(valorTotal) || valorTotal <= 0) {
       return;
     }
 
-    onAceptar(pesoTotalKg);
+    onAceptar(valorTotal);
   }
 
   if (!abierto) return null;
 
   return (
-    <div className="metal-modal-backdrop" role="presentation">
+    <div className="metal-modal-backdrop" role="presentation" translate="no">
       <div
         className="metal-modal"
         role="dialog"
@@ -529,7 +687,7 @@ function MetalWeightCalculatorModal({
           <span>
             Precio unit.:{' '}
             {precioUnitario > 0
-              ? `u$s ${formatearDecimal4(precioUnitario)}`
+              ? `USD ${formatearDecimal4(precioUnitario)}`
               : 'sin cargar'}
           </span>
         </div>
@@ -541,7 +699,9 @@ function MetalWeightCalculatorModal({
             <option value="perfil-t">Perfil T</option>
             <option value="perfil-doble-t">Perfil doble T / IPN</option>
             <option value="perfil-u">Perfil U / UPN</option>
-            <option value="chapa">Chapa</option>
+            <option value="perfil-c">Perfil C</option>
+            <option value="chapa">Chapa / planchuela</option>
+            <option value="chapa-techo">Chapa para techos</option>
           </select>
         </label>
 
@@ -556,6 +716,50 @@ function MetalWeightCalculatorModal({
         )}
 
         <div className="metal-fields-grid">
+          {forma === 'chapa-techo' && (
+            <>
+              <label className="metal-field">
+                Forma
+                <select
+                  value={tipoChapaTecho}
+                  onChange={(event) =>
+                    setTipoChapaTecho(event.target.value as TipoChapaTecho)
+                  }
+                >
+                  <option value="acanalada">Acanalada</option>
+                  <option value="trapezoidal">Trapezoidal</option>
+                </select>
+              </label>
+
+              <label className="metal-field">
+                Material
+                <select
+                  value={materialChapaTecho}
+                  onChange={(event) =>
+                    setMaterialChapaTecho(
+                      event.target.value as MaterialChapaTecho,
+                    )
+                  }
+                >
+                  <option value="galvanizada">Galvanizada</option>
+                  <option value="negra">Negra</option>
+                </select>
+              </label>
+
+              <label className="metal-field">
+                Largo mm
+                <input
+                  name="largoMm"
+                  value={valores.largoMm}
+                  onChange={actualizarValor}
+                  onBlur={completarValor}
+                  inputMode="decimal"
+                  placeholder="0,0000"
+                />
+              </label>
+            </>
+          )}
+
           {permiteTabla && modoCalculoPerfil === 'tabla' && (
             <>
               <label className="metal-field">
@@ -582,7 +786,7 @@ function MetalWeightCalculatorModal({
                   onChange={actualizarValor}
                   onBlur={completarValor}
                   inputMode="decimal"
-                  placeholder="0,0000"
+                  placeholder="12000,0000"
                 />
               </label>
             </>
@@ -656,11 +860,9 @@ function MetalWeightCalculatorModal({
             </>
           )}
 
-          {permiteTabla &&
+          {esPerfil(forma) &&
             modoCalculoPerfil === 'manual' &&
-            (forma === 'perfil-t' ||
-              forma === 'perfil-doble-t' ||
-              forma === 'perfil-u') && (
+            forma !== 'perfil-c' && (
               <>
                 <label className="metal-field">
                   Alto total mm
@@ -718,14 +920,90 @@ function MetalWeightCalculatorModal({
                     onChange={actualizarValor}
                     onBlur={completarValor}
                     inputMode="decimal"
-                    placeholder="0,0000"
+                    placeholder="12000,0000"
                   />
                 </label>
               </>
             )}
+
+          {forma === 'perfil-c' && modoCalculoPerfil === 'manual' && (
+            <>
+              <label className="metal-field">
+                Alto total mm
+                <input
+                  name="altoTotalMm"
+                  value={valores.altoTotalMm}
+                  onChange={actualizarValor}
+                  onBlur={completarValor}
+                  inputMode="decimal"
+                  placeholder="0,0000"
+                />
+              </label>
+
+              <label className="metal-field">
+                Ancho ala mm
+                <input
+                  name="anchoAlaMm"
+                  value={valores.anchoAlaMm}
+                  onChange={actualizarValor}
+                  onBlur={completarValor}
+                  inputMode="decimal"
+                  placeholder="0,0000"
+                />
+              </label>
+
+              <label className="metal-field">
+                Pestaña mm
+                <input
+                  name="pestanaMm"
+                  value={valores.pestanaMm}
+                  onChange={actualizarValor}
+                  onBlur={completarValor}
+                  inputMode="decimal"
+                  placeholder="0,0000"
+                />
+              </label>
+
+              <label className="metal-field">
+                Espesor mm
+                <input
+                  name="espesorMm"
+                  value={valores.espesorMm}
+                  onChange={actualizarValor}
+                  onBlur={completarValor}
+                  inputMode="decimal"
+                  placeholder="0,0000"
+                />
+              </label>
+
+              <label className="metal-field">
+                Largo mm
+                <input
+                  name="largoMm"
+                  value={valores.largoMm}
+                  onChange={actualizarValor}
+                  onBlur={completarValor}
+                  inputMode="decimal"
+                  placeholder="12000,0000"
+                />
+              </label>
+            </>
+          )}
         </div>
 
         <div className="metal-result">
+          {forma === 'chapa-techo' && (
+            <div>
+              Chapa:{' '}
+              <strong>
+                {tipoChapaTecho === 'acanalada' ? 'Acanalada' : 'Trapezoidal'}{' '}
+                {materialChapaTecho === 'galvanizada'
+                  ? 'galvanizada'
+                  : 'negra'}
+              </strong>
+            </div>
+          )}
+
           {permiteTabla &&
             modoCalculoPerfil === 'tabla' &&
             perfilSeleccionado && (
@@ -738,10 +1016,10 @@ function MetalWeightCalculatorModal({
             )}
 
           <div>
-            Peso total:{' '}
+            {etiquetaTotal}:{' '}
             <strong>
-              {Number.isFinite(pesoTotalKg)
-                ? `${formatearDecimal4(pesoTotalKg)} kg`
+              {Number.isFinite(valorTotal)
+                ? `${formatearDecimal4(valorTotal)} ${unidadResultado}`
                 : '-'}
             </strong>
           </div>
@@ -750,7 +1028,7 @@ function MetalWeightCalculatorModal({
             Subtotal:{' '}
             <strong>
               {Number.isFinite(subtotal)
-                ? `u$s ${formatearImporte(subtotal)}`
+                ? `USD ${formatearImporte(subtotal)}`
                 : '-'}
             </strong>
           </div>
@@ -769,9 +1047,9 @@ function MetalWeightCalculatorModal({
             type="button"
             className="metal-primary-button"
             onClick={aceptar}
-            disabled={!Number.isFinite(pesoTotalKg) || pesoTotalKg <= 0}
+            disabled={!Number.isFinite(valorTotal) || valorTotal <= 0}
           >
-            Aceptar peso
+            Aceptar
           </button>
         </div>
       </div>

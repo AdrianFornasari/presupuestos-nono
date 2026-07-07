@@ -140,25 +140,25 @@ function App() {
     setLineas(lineasPresupuesto);
   }
 
-useEffect(() => {
-  let cancelado = false;
+  useEffect(() => {
+    let cancelado = false;
 
-  void listarPresupuestos().then((datos) => {
-    if (!cancelado) {
-      setPresupuestos(datos);
-    }
-  });
+    void listarPresupuestos().then((datos) => {
+      if (!cancelado) {
+        setPresupuestos(datos);
+      }
+    });
 
-  void solicitarAlmacenamientoPersistente().then((estado) => {
-    if (!cancelado) {
-      setEstadoAlmacenamiento(estado);
-    }
-  });
+    void solicitarAlmacenamientoPersistente().then((estado) => {
+      if (!cancelado) {
+        setEstadoAlmacenamiento(estado);
+      }
+    });
 
-  return () => {
-    cancelado = true;
-  };
-}, []);
+    return () => {
+      cancelado = true;
+    };
+  }, []);
 
   async function manejarNuevoPresupuesto() {
     const nuevo = await crearPresupuestoBorrador();
@@ -415,6 +415,7 @@ useEffect(() => {
     });
 
     form.reset();
+    setProductoFormVersion((version) => version + 1);
 
     await recargarPresupuestoActual(presupuestoActual.id);
     await cargarPresupuestos();
@@ -618,7 +619,7 @@ useEffect(() => {
 
   if (pantalla === 'configuracion') {
     return (
-      <main className="app-shell">
+      <main className="app-shell" translate="no">
         {avisoModalElemento}
 
         <section className="screen-card">
@@ -718,7 +719,7 @@ useEffect(() => {
       : 0;
 
     return (
-      <main className="app-shell">
+      <main className="app-shell" translate="no">
         {avisoModalElemento}
 
         <section className="screen-card">
@@ -867,7 +868,7 @@ useEffect(() => {
               </label>
 
               <label className="field-label">
-                Precio unitario u$s
+                Precio unitario USD
                 <input
                   ref={precioUnitarioInputRef}
                   name="precioUnitario"
@@ -986,7 +987,7 @@ useEffect(() => {
                         </span>
 
                         <span>
-                          Precio unit.: u$s{' '}
+                          Precio unit.: USD{' '}
                           <strong>
                             {formatearDecimal4(linea.precioUnitario)}
                           </strong>
@@ -994,7 +995,7 @@ useEffect(() => {
                       </div>
 
                       <div className="product-card-subtotal">
-                        Subtotal: u$s{' '}
+                        Subtotal: USD{' '}
                         <strong>{formatearImporteUSD(linea.subtotal)}</strong>
                       </div>
 
@@ -1049,7 +1050,7 @@ useEffect(() => {
   }
 
   return (
-    <main className="app-shell">
+    <main className="app-shell" translate="no">
       {avisoModalElemento}
 
       <section className="home-card">
@@ -1109,8 +1110,7 @@ useEffect(() => {
                     <span>{formatearFechaLista(presupuesto.fechaEmision)}</span>
                     <span>-</span>
                     <span>{presupuesto.clienteNombre || 'Sin cliente'}</span>
-                    <span>-</span>
-                    <strong>u$s {formatearImporteUSD(presupuesto.total)}</strong>
+                    <strong>USD {formatearImporteUSD(presupuesto.total)}</strong>
                   </span>
                 </button>
               ))}
