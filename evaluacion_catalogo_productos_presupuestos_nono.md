@@ -1,5 +1,5 @@
 # Evaluación: catálogo de productos cotizados en Presupuestos Nono
-
+Agregado adrian
 ## 1. Pedido del usuario
 
 El usuario consulta si la app podría ir recopilando automáticamente cada producto ingresado en los presupuestos para formar una especie de catálogo de productos cotizados. La finalidad sería que, en presupuestos posteriores, pueda seleccionar rápidamente un producto ya usado en vez de volver a escribir manualmente la descripción, unidad, peso total o precio unitario.
