@@ -113,6 +113,7 @@ function App() {
     null,
   );
   const [pesoTotalProducto, setPesoTotalProducto] = useState('');
+  const [selectorProductoAbierto, setSelectorProductoAbierto] = useState(false);
 
   const [clienteEditando, setClienteEditando] = useState(false);
   const [clienteDatosModificados, setClienteDatosModificados] = useState(false);
@@ -123,6 +124,7 @@ function App() {
 
   const inputBackupRef = useRef<HTMLInputElement | null>(null);
   const productoFormRef = useRef<HTMLFormElement | null>(null);
+  const descripcionProductoRef = useRef<HTMLTextAreaElement | null>(null);
 
   const tiposProducto = useMemo(
     () => Array.from(new Set(PRODUCTOS_PROVEEDOR.map((producto) => producto.tipo))),
@@ -187,6 +189,7 @@ function App() {
     setLargoProducto('12,00');
     setMasaNominalProducto(null);
     setPesoTotalProducto('');
+    setSelectorProductoAbierto(false);
   }
 
   function manejarCambioTipoProducto(event: ChangeEvent<HTMLSelectElement>) {
@@ -225,6 +228,40 @@ function App() {
       ),
     );
     setMensaje('');
+  }
+
+  function abrirSelectorProducto() {
+    setSelectorProductoAbierto(true);
+    setMensaje('');
+  }
+
+  function cerrarSelectorProducto() {
+    setSelectorProductoAbierto(false);
+  }
+
+  function confirmarSeleccionProducto() {
+    if (!tipoProductoSeleccionado) {
+      setMensaje('Seleccioná un tipo de producto.');
+      return;
+    }
+
+    if (!productoProveedorId || !masaNominalProducto) {
+      setMensaje('Seleccioná un producto de la tabla de proveedor.');
+      return;
+    }
+
+    setSelectorProductoAbierto(false);
+    setMensaje('');
+
+    window.setTimeout(() => {
+      descripcionProductoRef.current?.focus();
+      const textarea = descripcionProductoRef.current;
+
+      if (textarea) {
+        const posicionFinal = textarea.value.length;
+        textarea.setSelectionRange(posicionFinal, posicionFinal);
+      }
+    }, 0);
   }
 
   function manejarCambioCantidadProducto(event: ChangeEvent<HTMLInputElement>) {
@@ -764,6 +801,104 @@ function App() {
     </div>
   ) : null;
 
+  const selectorProductoModalElemento = selectorProductoAbierto ? (
+    <div
+      className="app-notice-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          cerrarSelectorProducto();
+        }
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="selector-producto-titulo"
+        style={{
+          width: 'min(92vw, 720px)',
+          maxHeight: '88vh',
+          overflowY: 'auto',
+          background: 'var(--card-bg, #ffffff)',
+          borderRadius: '18px',
+          padding: '20px',
+          boxShadow: '0 18px 60px rgba(0, 0, 0, 0.28)',
+        }}
+      >
+        <h2 id="selector-producto-titulo" style={{ marginTop: 0 }}>
+          Seleccionar producto
+        </h2>
+
+        <p className="empty-text" style={{ marginTop: 0 }}>
+          Usar tabla de proveedor
+        </p>
+
+        <label className="field-label product-full-field">
+          Tipo de producto
+          <select
+            className="text-input"
+            value={tipoProductoSeleccionado}
+            onChange={manejarCambioTipoProducto}
+            autoFocus
+          >
+            <option value="">Seleccionar tipo...</option>
+            {tiposProducto.map((tipo) => (
+              <option key={tipo} value={tipo}>
+                {tipo}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="field-label product-full-field">
+          Producto
+          <select
+            className="text-input"
+            value={productoProveedorId}
+            onChange={manejarCambioProducto}
+            disabled={!tipoProductoSeleccionado}
+          >
+            <option value="">
+              {tipoProductoSeleccionado
+                ? 'Seleccionar producto...'
+                : 'Primero seleccioná un tipo'}
+            </option>
+            {productosFiltrados.map((producto) => (
+              <option key={producto.id} value={producto.id}>
+                {producto.descripcion}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {masaNominalProducto !== null && productoProveedorId && (
+          <p className="empty-text">
+            Masa nominal: <strong>{formatearDecimal4SinMiles(masaNominalProducto)} kg/m</strong>
+          </p>
+        )}
+
+        <div className="product-form-actions">
+          <button
+            type="button"
+            className="primary-button"
+            onClick={confirmarSeleccionProducto}
+            disabled={!productoProveedorId}
+          >
+            Usar producto
+          </button>
+
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={cerrarSelectorProducto}
+          >
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   if (pantalla === 'configuracion') {
     return (
       <main className="app-shell" translate="no">
@@ -864,6 +999,7 @@ function App() {
     return (
       <main className="app-shell" translate="no">
         {avisoModalElemento}
+        {selectorProductoModalElemento}
 
         <section className="screen-card">
           <div className="top-actions-row">
@@ -988,57 +1124,34 @@ function App() {
               </select>
             </label>
 
-            <div className="product-two-column-grid">
-              <label className="field-label">
-                Tipo de producto
-                <select
-                  className="text-input"
-                  value={tipoProductoSeleccionado}
-                  onChange={manejarCambioTipoProducto}
-                >
-                  <option value="">Seleccionar tipo...</option>
-                  {tiposProducto.map((tipo) => (
-                    <option key={tipo} value={tipo}>
-                      {tipo}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="field-label">
-                Producto
-                <select
-                  className="text-input"
-                  value={productoProveedorId}
-                  onChange={manejarCambioProducto}
-                  disabled={!tipoProductoSeleccionado}
-                >
-                  <option value="">
-                    {tipoProductoSeleccionado
-                      ? 'Seleccionar producto...'
-                      : 'Primero seleccioná un tipo'}
-                  </option>
-                  {productosFiltrados.map((producto) => (
-                    <option key={producto.id} value={producto.id}>
-                      {producto.descripcion}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
             <label className="field-label product-full-field">
               Descripción del producto
               <textarea
+                ref={descripcionProductoRef}
                 name="descripcion"
                 className="text-area product-text-area"
                 rows={2}
                 autoComplete="off"
                 value={descripcionProducto}
+                onFocus={() => {
+                  if (!productoProveedorId) {
+                    abrirSelectorProducto();
+                  }
+                }}
                 onChange={(event) => setDescripcionProducto(event.currentTarget.value)}
-                placeholder="Seleccioná un producto y agregá aquí cualquier aclaración"
+                placeholder="Toque aquí para seleccionar un producto"
               />
             </label>
+
+            <div className="product-form-actions" style={{ marginTop: '-4px' }}>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={abrirSelectorProducto}
+              >
+                {productoProveedorId ? 'Cambiar producto' : 'Seleccionar producto'}
+              </button>
+            </div>
 
             <div className="product-two-column-grid">
               <label className="field-label">
