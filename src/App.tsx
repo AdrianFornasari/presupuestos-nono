@@ -50,6 +50,7 @@ import {
   type EstadoAlmacenamientoPersistente,
 } from './utils/persistentStorage';
 
+// BUILD: PRODUCTOS-PROVEEDOR-V3-20260822 - sin Modo de cálculo; selector oscuro
 type Pantalla = 'inicio' | 'editar' | 'configuracion';
 
 function textoEstadoDrive(estado: Presupuesto['estadoDrive']): string {
@@ -801,6 +802,15 @@ function App() {
     </div>
   ) : null;
 
+  const estilosGlobalesElemento = (
+    <style>{`
+      button:disabled {
+        color: #808080 !important;
+        opacity: 1 !important;
+      }
+    `}</style>
+  );
+
   const selectorProductoModalElemento = selectorProductoAbierto ? (
     <div
       className="app-notice-backdrop"
@@ -819,27 +829,32 @@ function App() {
           width: 'min(92vw, 720px)',
           maxHeight: '88vh',
           overflowY: 'auto',
-          background: 'var(--card-bg, #ffffff)',
+          background: '#000000',
+          color: '#ffffff',
           borderRadius: '18px',
           padding: '20px',
-          boxShadow: '0 18px 60px rgba(0, 0, 0, 0.28)',
+          boxShadow: '0 18px 60px rgba(0, 0, 0, 0.55)',
         }}
       >
         <h2 id="selector-producto-titulo" style={{ marginTop: 0 }}>
           Seleccionar producto
         </h2>
 
-        <p className="empty-text" style={{ marginTop: 0 }}>
-          Usar tabla de proveedor
-        </p>
-
-        <label className="field-label product-full-field">
+        <label
+          className="field-label product-full-field"
+          style={{ color: '#ffffff' }}
+        >
           Tipo de producto
           <select
             className="text-input"
             value={tipoProductoSeleccionado}
             onChange={manejarCambioTipoProducto}
             autoFocus
+            style={{
+              background: '#111111',
+              color: '#ffffff',
+              borderColor: '#555555',
+            }}
           >
             <option value="">Seleccionar tipo...</option>
             {tiposProducto.map((tipo) => (
@@ -850,13 +865,25 @@ function App() {
           </select>
         </label>
 
-        <label className="field-label product-full-field">
+        <label
+          className="field-label product-full-field"
+          style={{ color: '#ffffff' }}
+        >
           Producto
           <select
             className="text-input"
             value={productoProveedorId}
             onChange={manejarCambioProducto}
             disabled={!tipoProductoSeleccionado}
+            style={{
+              background: '#111111',
+              color: tipoProductoSeleccionado ? '#ffffff' : '#808080',
+              WebkitTextFillColor: tipoProductoSeleccionado
+                ? '#ffffff'
+                : '#808080',
+              borderColor: '#555555',
+              opacity: 1,
+            }}
           >
             <option value="">
               {tipoProductoSeleccionado
@@ -872,8 +899,11 @@ function App() {
         </label>
 
         {masaNominalProducto !== null && productoProveedorId && (
-          <p className="empty-text">
-            Masa nominal: <strong>{formatearDecimal4SinMiles(masaNominalProducto)} kg/m</strong>
+          <p style={{ color: '#ffffff' }}>
+            Masa nominal:{' '}
+            <strong>
+              {formatearDecimal4SinMiles(masaNominalProducto)} kg/m
+            </strong>
           </p>
         )}
 
@@ -883,6 +913,10 @@ function App() {
             className="primary-button"
             onClick={confirmarSeleccionProducto}
             disabled={!productoProveedorId}
+            style={{
+              color: productoProveedorId ? undefined : '#808080',
+              opacity: 1,
+            }}
           >
             Usar producto
           </button>
@@ -903,6 +937,7 @@ function App() {
     return (
       <main className="app-shell" translate="no">
         {avisoModalElemento}
+        {estilosGlobalesElemento}
 
         <section className="screen-card">
           <button type="button" className="back-button" onClick={volverInicio}>
@@ -999,6 +1034,7 @@ function App() {
     return (
       <main className="app-shell" translate="no">
         {avisoModalElemento}
+        {estilosGlobalesElemento}
         {selectorProductoModalElemento}
 
         <section className="screen-card">
@@ -1116,13 +1152,6 @@ function App() {
             onSubmit={agregarProducto}
           >
             <h2>{lineaEnEdicion ? 'Editar producto' : 'Agregar producto'}</h2>
-
-            <label className="field-label product-full-field">
-              Modo de cálculo
-              <select className="text-input" value="proveedor" disabled>
-                <option value="proveedor">Usar tabla de proveedor</option>
-              </select>
-            </label>
 
             <label className="field-label product-full-field">
               Descripción del producto
@@ -1358,6 +1387,7 @@ function App() {
   return (
     <main className="app-shell" translate="no">
       {avisoModalElemento}
+      {estilosGlobalesElemento}
 
       <section className="home-card">
         <div className="storage-status">
