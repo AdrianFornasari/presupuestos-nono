@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ChangeEvent,
@@ -7,7 +8,6 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from 'react';
-import MetalWeightCalculatorModal from './components/MetalWeightCalculatorModal';
 import {
   crearBackupJson,
   descargarBackup,
@@ -35,6 +35,7 @@ import {
   generarYGuardarPdfPresupuesto,
 } from './pdf/presupuestoPdfService';
 import type { LineaPresupuesto, Presupuesto } from './types/presupuesto';
+import { PRODUCTOS_PROVEEDOR } from './data/productosProveedor';
 import {
   formatearDecimal2SinMiles,
   formatearDecimal4,
@@ -103,10 +104,15 @@ function App() {
   const [driveConectado, setDriveConectado] = useState(false);
   const [driveTrabajando, setDriveTrabajando] = useState(false);
 
-  const [calculadoraAbierta, setCalculadoraAbierta] = useState(false);
-  const [cantidadParaCalculadora, setCantidadParaCalculadora] = useState(0);
-  const [precioUnitarioParaCalculadora, setPrecioUnitarioParaCalculadora] =
-    useState(0);
+  const [tipoProductoSeleccionado, setTipoProductoSeleccionado] = useState('');
+  const [productoProveedorId, setProductoProveedorId] = useState('');
+  const [descripcionProducto, setDescripcionProducto] = useState('');
+  const [cantidadProducto, setCantidadProducto] = useState('');
+  const [largoProducto, setLargoProducto] = useState('12,00');
+  const [masaNominalProducto, setMasaNominalProducto] = useState<number | null>(
+    null,
+  );
+  const [pesoTotalProducto, setPesoTotalProducto] = useState('');
 
   const [clienteEditando, setClienteEditando] = useState(false);
   const [clienteDatosModificados, setClienteDatosModificados] = useState(false);
@@ -116,10 +122,20 @@ function App() {
   const [productoFormVersion, setProductoFormVersion] = useState(0);
 
   const inputBackupRef = useRef<HTMLInputElement | null>(null);
-  const cantidadInputRef = useRef<HTMLInputElement | null>(null);
-  const pesoTotalInputRef = useRef<HTMLInputElement | null>(null);
-  const precioUnitarioInputRef = useRef<HTMLInputElement | null>(null);
   const productoFormRef = useRef<HTMLFormElement | null>(null);
+
+  const tiposProducto = useMemo(
+    () => Array.from(new Set(PRODUCTOS_PROVEEDOR.map((producto) => producto.tipo))),
+    [],
+  );
+
+  const productosFiltrados = useMemo(
+    () =>
+      PRODUCTOS_PROVEEDOR.filter(
+        (producto) => producto.tipo === tipoProductoSeleccionado,
+      ),
+    [tipoProductoSeleccionado],
+  );
 
   async function cargarPresupuestos() {
     const datos = await listarPresupuestos();
@@ -138,6 +154,133 @@ function App() {
 
     setPresupuestoActual(presupuesto);
     setLineas(lineasPresupuesto);
+  }
+
+  function calcularPesoTotalProveedor(
+    cantidadTexto: string,
+    largoTexto: string,
+    masaNominal: number | null,
+  ): string {
+    const cantidad = parsearEntero(cantidadTexto);
+    const largo = parsearNumeroDecimal(largoTexto);
+
+    if (
+      !Number.isInteger(cantidad) ||
+      cantidad <= 0 ||
+      !Number.isFinite(largo) ||
+      largo <= 0 ||
+      masaNominal === null ||
+      !Number.isFinite(masaNominal) ||
+      masaNominal <= 0
+    ) {
+      return '';
+    }
+
+    return formatearDecimal4SinMiles(cantidad * largo * masaNominal);
+  }
+
+  function reiniciarFormularioProducto() {
+    setTipoProductoSeleccionado('');
+    setProductoProveedorId('');
+    setDescripcionProducto('');
+    setCantidadProducto('');
+    setLargoProducto('12,00');
+    setMasaNominalProducto(null);
+    setPesoTotalProducto('');
+  }
+
+  function manejarCambioTipoProducto(event: ChangeEvent<HTMLSelectElement>) {
+    const tipo = event.currentTarget.value;
+
+    setTipoProductoSeleccionado(tipo);
+    setProductoProveedorId('');
+    setDescripcionProducto('');
+    setMasaNominalProducto(null);
+    setPesoTotalProducto('');
+    setMensaje('');
+  }
+
+  function manejarCambioProducto(event: ChangeEvent<HTMLSelectElement>) {
+    const productoId = event.currentTarget.value;
+    const producto = PRODUCTOS_PROVEEDOR.find(
+      (item) => item.id === productoId,
+    );
+
+    setProductoProveedorId(productoId);
+
+    if (!producto) {
+      setDescripcionProducto('');
+      setMasaNominalProducto(null);
+      setPesoTotalProducto('');
+      return;
+    }
+
+    setDescripcionProducto(producto.descripcion);
+    setMasaNominalProducto(producto.masaNominal);
+    setPesoTotalProducto(
+      calcularPesoTotalProveedor(
+        cantidadProducto,
+        largoProducto,
+        producto.masaNominal,
+      ),
+    );
+    setMensaje('');
+  }
+
+  function manejarCambioCantidadProducto(event: ChangeEvent<HTMLInputElement>) {
+    const cantidad = event.currentTarget.value.replace(/\D/g, '');
+
+    setCantidadProducto(cantidad);
+    setPesoTotalProducto(
+      calcularPesoTotalProveedor(
+        cantidad,
+        largoProducto,
+        masaNominalProducto,
+      ),
+    );
+  }
+
+  function manejarCambioLargoProducto(event: ChangeEvent<HTMLInputElement>) {
+    const largo = normalizarTextoDecimal(event.currentTarget.value, 2);
+
+    setLargoProducto(largo);
+    setPesoTotalProducto(
+      calcularPesoTotalProveedor(
+        cantidadProducto,
+        largo,
+        masaNominalProducto,
+      ),
+    );
+  }
+
+  function completarLargoProducto() {
+    const largo = parsearNumeroDecimal(largoProducto);
+
+    if (!Number.isFinite(largo) || largo <= 0) return;
+
+    const largoFormateado = formatearDecimal2SinMiles(largo);
+    setLargoProducto(largoFormateado);
+    setPesoTotalProducto(
+      calcularPesoTotalProveedor(
+        cantidadProducto,
+        largoFormateado,
+        masaNominalProducto,
+      ),
+    );
+  }
+
+  function manejarCambioPesoTotal(event: ChangeEvent<HTMLInputElement>) {
+    setPesoTotalProducto(
+      normalizarTextoDecimal(event.currentTarget.value, 4),
+    );
+  }
+
+  function completarPesoTotalProducto() {
+    const peso = parsearNumeroDecimal(pesoTotalProducto);
+
+    if (!Number.isFinite(peso) || peso <= 0) return;
+
+    setPesoTotalProducto(formatearDecimal4SinMiles(peso));
   }
 
   useEffect(() => {
@@ -167,6 +310,7 @@ function App() {
     setClienteEditando(false);
     setClienteDatosModificados(false);
     setLineaEnEdicion(null);
+    reiniciarFormularioProducto();
     setPantalla('editar');
     setMensaje(`Presupuesto ${nuevo.numeroFormateado} creado.`);
     await cargarPresupuestos();
@@ -187,12 +331,9 @@ function App() {
     setClienteEditando(false);
     setClienteDatosModificados(false);
     setLineaEnEdicion(null);
+    reiniciarFormularioProducto();
     setPantalla('editar');
     setMensaje('');
-  }
-
-  function normalizarEntradaEntera(event: ChangeEvent<HTMLInputElement>) {
-    event.currentTarget.value = event.currentTarget.value.replace(/\D/g, '');
   }
 
   function normalizarEntradaDecimal4(event: ChangeEvent<HTMLInputElement>) {
@@ -281,52 +422,42 @@ function App() {
     setMensaje('Datos del cliente guardados.');
   }
 
-  function intentarAbrirCalculadoraPeso() {
-    const pesoActualTexto = pesoTotalInputRef.current?.value.trim() ?? '';
-    const pesoActual = pesoActualTexto
-      ? parsearNumeroDecimal(pesoActualTexto)
-      : 0;
-
-    if (Number.isFinite(pesoActual) && pesoActual > 0) {
-      return;
-    }
-
-    const cantidad = parsearEntero(cantidadInputRef.current?.value ?? '');
-
-    if (!Number.isInteger(cantidad) || cantidad <= 0) {
-      setMensaje(
-        'Antes de calcular el peso total, cargá una cantidad entera mayor que cero.',
-      );
-      cantidadInputRef.current?.focus();
-      return;
-    }
-
-    const precioUnitario = parsearNumeroDecimal(
-      precioUnitarioInputRef.current?.value ?? '',
-    );
-
-    setCantidadParaCalculadora(cantidad);
-    setPrecioUnitarioParaCalculadora(
-      Number.isFinite(precioUnitario) && precioUnitario > 0
-        ? precioUnitario
-        : 0,
-    );
-    setCalculadoraAbierta(true);
-    setMensaje('');
-  }
-
-  function aceptarPesoCalculado(pesoCalculado: number) {
-    if (pesoTotalInputRef.current) {
-      pesoTotalInputRef.current.value = formatearDecimal4SinMiles(pesoCalculado);
-    }
-
-    setCalculadoraAbierta(false);
-    setAvisoModal('Peso total calculado.');
-  }
-
   function cargarLineaParaEditar(linea: LineaPresupuesto) {
+    const coincidencia = PRODUCTOS_PROVEEDOR.filter((producto) =>
+      linea.descripcion.startsWith(producto.descripcion),
+    ).sort(
+      (a, b) => b.descripcion.length - a.descripcion.length,
+    )[0];
+
     setLineaEnEdicion(linea);
     setProductoFormVersion((version) => version + 1);
+    setDescripcionProducto(linea.descripcion);
+    setCantidadProducto(String(linea.cantidad));
+    setPesoTotalProducto(formatearDecimal4SinMiles(obtenerPesoTotalLinea(linea)));
+
+    if (coincidencia) {
+      setTipoProductoSeleccionado(coincidencia.tipo);
+      setProductoProveedorId(coincidencia.id);
+      setMasaNominalProducto(coincidencia.masaNominal);
+
+      const pesoTotal = obtenerPesoTotalLinea(linea);
+      const largoCalculado =
+        linea.cantidad > 0 && coincidencia.masaNominal > 0
+          ? pesoTotal / (linea.cantidad * coincidencia.masaNominal)
+          : 12;
+
+      setLargoProducto(
+        Number.isFinite(largoCalculado) && largoCalculado > 0
+          ? formatearDecimal2SinMiles(largoCalculado)
+          : '12,00',
+      );
+    } else {
+      setTipoProductoSeleccionado('');
+      setProductoProveedorId('');
+      setMasaNominalProducto(null);
+      setLargoProducto('12,00');
+    }
+
     setMensaje('');
 
     window.setTimeout(() => {
@@ -339,6 +470,7 @@ function App() {
 
   function cancelarEdicionProducto() {
     setLineaEnEdicion(null);
+    reiniciarFormularioProducto();
     setProductoFormVersion((version) => version + 1);
     setMensaje('');
   }
@@ -351,11 +483,22 @@ function App() {
     const form = event.currentTarget;
     const formData = new FormData(form);
 
-    const descripcion = String(formData.get('descripcion') || '').trim();
-    const unidad = String(formData.get('unidad') || '').trim();
-    const cantidad = parsearEntero(formData.get('cantidad'));
-    const pesoTotal = parsearNumeroDecimal(formData.get('pesoTotal'));
+    const descripcion = descripcionProducto.trim();
+    const unidad = 'kg';
+    const cantidad = parsearEntero(cantidadProducto);
+    const largo = parsearNumeroDecimal(largoProducto);
+    const pesoTotal = parsearNumeroDecimal(pesoTotalProducto);
     const precioUnitario = parsearNumeroDecimal(formData.get('precioUnitario'));
+
+    if (!tipoProductoSeleccionado) {
+      setMensaje('Seleccioná un tipo de producto.');
+      return;
+    }
+
+    if (!productoProveedorId || !masaNominalProducto) {
+      setMensaje('Seleccioná un producto de la tabla de proveedor.');
+      return;
+    }
 
     if (!descripcion) {
       setMensaje('Falta la descripción del producto.');
@@ -367,6 +510,11 @@ function App() {
       return;
     }
 
+    if (!Number.isFinite(largo) || largo <= 0) {
+      setMensaje('El largo debe ser un número válido mayor que cero.');
+      return;
+    }
+
     if (!Number.isFinite(precioUnitario) || precioUnitario <= 0) {
       setMensaje('El precio unitario debe ser mayor que cero.');
       return;
@@ -374,11 +522,6 @@ function App() {
 
     if (!Number.isFinite(pesoTotal) || pesoTotal <= 0) {
       setMensaje('El peso total debe ser mayor que cero.');
-      return;
-    }
-
-    if (!unidad) {
-      setMensaje('Falta la unidad de medida.');
       return;
     }
 
@@ -396,6 +539,7 @@ function App() {
       );
 
       setLineaEnEdicion(null);
+      reiniciarFormularioProducto();
       setProductoFormVersion((version) => version + 1);
 
       await recargarPresupuestoActual(presupuestoActual.id);
@@ -415,6 +559,7 @@ function App() {
     });
 
     form.reset();
+    reiniciarFormularioProducto();
     setProductoFormVersion((version) => version + 1);
 
     await recargarPresupuestoActual(presupuestoActual.id);
@@ -433,6 +578,7 @@ function App() {
 
     if (lineaEnEdicion?.id === lineaId) {
       setLineaEnEdicion(null);
+      reiniciarFormularioProducto();
       setProductoFormVersion((version) => version + 1);
     }
 
@@ -587,6 +733,7 @@ function App() {
     setClienteEditando(false);
     setClienteDatosModificados(false);
     setLineaEnEdicion(null);
+    reiniciarFormularioProducto();
     setMensaje('');
     setAvisoModal('');
     cargarPresupuestos();
@@ -714,10 +861,6 @@ function App() {
   }
 
   if (pantalla === 'editar' && presupuestoActual) {
-    const pesoTotalEdicion = lineaEnEdicion
-      ? obtenerPesoTotalLinea(lineaEnEdicion)
-      : 0;
-
     return (
       <main className="app-shell" translate="no">
         {avisoModalElemento}
@@ -839,13 +982,61 @@ function App() {
             <h2>{lineaEnEdicion ? 'Editar producto' : 'Agregar producto'}</h2>
 
             <label className="field-label product-full-field">
+              Modo de cálculo
+              <select className="text-input" value="proveedor" disabled>
+                <option value="proveedor">Usar tabla de proveedor</option>
+              </select>
+            </label>
+
+            <div className="product-two-column-grid">
+              <label className="field-label">
+                Tipo de producto
+                <select
+                  className="text-input"
+                  value={tipoProductoSeleccionado}
+                  onChange={manejarCambioTipoProducto}
+                >
+                  <option value="">Seleccionar tipo...</option>
+                  {tiposProducto.map((tipo) => (
+                    <option key={tipo} value={tipo}>
+                      {tipo}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="field-label">
+                Producto
+                <select
+                  className="text-input"
+                  value={productoProveedorId}
+                  onChange={manejarCambioProducto}
+                  disabled={!tipoProductoSeleccionado}
+                >
+                  <option value="">
+                    {tipoProductoSeleccionado
+                      ? 'Seleccionar producto...'
+                      : 'Primero seleccioná un tipo'}
+                  </option>
+                  {productosFiltrados.map((producto) => (
+                    <option key={producto.id} value={producto.id}>
+                      {producto.descripcion}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <label className="field-label product-full-field">
               Descripción del producto
               <textarea
                 name="descripcion"
                 className="text-area product-text-area"
                 rows={2}
                 autoComplete="off"
-                defaultValue={lineaEnEdicion?.descripcion ?? ''}
+                value={descripcionProducto}
+                onChange={(event) => setDescripcionProducto(event.currentTarget.value)}
+                placeholder="Seleccioná un producto y agregá aquí cualquier aclaración"
               />
             </label>
 
@@ -853,24 +1044,50 @@ function App() {
               <label className="field-label">
                 Cantidad
                 <input
-                  ref={cantidadInputRef}
                   name="cantidad"
                   className="text-input product-number-input"
                   inputMode="numeric"
                   pattern="[0-9]*"
                   autoComplete="off"
                   placeholder="Entero"
-                  onChange={normalizarEntradaEntera}
-                  defaultValue={
-                    lineaEnEdicion ? String(lineaEnEdicion.cantidad) : ''
+                  value={cantidadProducto}
+                  onChange={manejarCambioCantidadProducto}
+                />
+              </label>
+
+              <label className="field-label">
+                Masa nominal (kg/m)
+                <input
+                  className="text-input product-number-input"
+                  value={
+                    masaNominalProducto
+                      ? formatearDecimal4SinMiles(masaNominalProducto)
+                      : ''
                   }
+                  placeholder="Se completa desde la tabla"
+                  readOnly
+                />
+              </label>
+            </div>
+
+            <div className="product-two-column-grid">
+              <label className="field-label">
+                Largo (m)
+                <input
+                  name="largo"
+                  className="text-input product-number-input"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  placeholder="12,00"
+                  value={largoProducto}
+                  onChange={manejarCambioLargoProducto}
+                  onBlur={completarLargoProducto}
                 />
               </label>
 
               <label className="field-label">
                 Precio unitario USD
                 <input
-                  ref={precioUnitarioInputRef}
                   name="precioUnitario"
                   className="text-input product-number-input"
                   inputMode="decimal"
@@ -887,38 +1104,21 @@ function App() {
               </label>
             </div>
 
-            <div className="product-two-column-grid">
-              <label className="field-label">
-                Unidad
-                <input
-                  name="unidad"
-                  className="text-input product-number-input"
-                  autoComplete="off"
-                  placeholder="kg, un, m..."
-                  defaultValue={lineaEnEdicion?.unidad ?? ''}
-                />
-              </label>
+            <label className="field-label product-full-field">
+              Peso total
+              <input
+                name="pesoTotal"
+                className="text-input product-number-input"
+                inputMode="decimal"
+                autoComplete="off"
+                placeholder="0,0000"
+                value={pesoTotalProducto}
+                onChange={manejarCambioPesoTotal}
+                onBlur={completarPesoTotalProducto}
+              />
+            </label>
 
-              <label className="field-label">
-                Peso total
-                <input
-                  ref={pesoTotalInputRef}
-                  name="pesoTotal"
-                  className="text-input product-number-input"
-                  inputMode="decimal"
-                  autoComplete="off"
-                  placeholder="0,0000"
-                  onFocus={intentarAbrirCalculadoraPeso}
-                  onChange={normalizarEntradaDecimal4}
-                  onBlur={completarCampoDecimal4}
-                  defaultValue={
-                    lineaEnEdicion
-                      ? formatearDecimal4SinMiles(pesoTotalEdicion)
-                      : ''
-                  }
-                />
-              </label>
-            </div>
+            <input type="hidden" name="unidad" value="kg" />
 
             <div className="product-form-actions">
               <button type="submit" className="primary-button">
@@ -937,13 +1137,6 @@ function App() {
             </div>
           </form>
 
-          <MetalWeightCalculatorModal
-            abierto={calculadoraAbierta}
-            cantidad={cantidadParaCalculadora}
-            precioUnitario={precioUnitarioParaCalculadora}
-            onAceptar={aceptarPesoCalculado}
-            onCerrar={() => setCalculadoraAbierta(false)}
-          />
 
           <div className="form-card">
             <h2>Productos cargados</h2>
