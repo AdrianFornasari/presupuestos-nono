@@ -18,12 +18,16 @@ const COLUMNA_UNIDAD_FIN = 134;
 const COLUMNA_PRECIO_FIN = 165;
 
 const ALTO_CABECERA_TABLA = 9;
+const ALTO_FILA_MINIMA = 10;
 const ALTO_FILA_TOTAL = 12;
 
 const CAJA_LEGAL_X = 14;
 const CAJA_LEGAL_ANCHO = 182;
-const CAJA_LEGAL_ALTO = 54;
+const CAJA_LEGAL_ALTO = 55;
 const MARGEN_INFERIOR_CAJA_LEGAL = 12;
+
+const Y_INICIO_TABLA = 96;
+const MARGEN_INFERIOR_DETALLE = 18;
 
 function limpiarNombreArchivo(texto: string): string {
   return texto
@@ -61,6 +65,12 @@ function formatearKilogramos(valor: number): string {
   return `${formatearImporteUSD(valor)} Kg`;
 }
 
+function obtenerCajaLegalY(doc: jsPDF): number {
+  const altoPagina = doc.internal.pageSize.getHeight();
+
+  return altoPagina - MARGEN_INFERIOR_CAJA_LEGAL - CAJA_LEGAL_ALTO;
+}
+
 function dibujarEncabezado(doc: jsPDF, presupuesto: Presupuesto): void {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(15);
@@ -85,7 +95,6 @@ function dibujarEncabezado(doc: jsPDF, presupuesto: Presupuesto): void {
   doc.setFontSize(10);
   doc.text(`Fecha: ${formatearFechaPdf(presupuesto.fechaEmision)}`, 150, 27);
   doc.text('Original', 150, 34);
-  doc.text('Pag.', 150, 41);
 
   doc.setFont('helvetica', 'bold');
   doc.text('CLIENTE:', 14, 68);
@@ -107,21 +116,27 @@ function dibujarEncabezado(doc: jsPDF, presupuesto: Presupuesto): void {
 }
 
 function dibujarCabeceraTabla(doc: jsPDF, y: number): void {
-  doc.setFillColor(235, 235, 235);
-  doc.rect(TABLA_X, y, TABLA_ANCHO, ALTO_CABECERA_TABLA, 'F');
-
+  doc.setFillColor(225, 225, 225);
   doc.setDrawColor(0, 0, 0);
-  doc.setLineWidth(0.2);
-  doc.rect(TABLA_X, y, TABLA_ANCHO, ALTO_CABECERA_TABLA);
+  doc.setLineWidth(0.3);
+
+  doc.rect(TABLA_X, y, TABLA_ANCHO, ALTO_CABECERA_TABLA, 'FD');
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setTextColor(0, 0, 0);
 
   doc.text('Producto', 16, y + 6);
-  doc.text('Cantidad', COLUMNA_CANTIDAD_FIN - 2, y + 6, {
-    align: 'right',
-  });
+
+  doc.text(
+    'Cantidad',
+    (COLUMNA_PRODUCTO_FIN + COLUMNA_CANTIDAD_FIN) / 2,
+    y + 6,
+    {
+      align: 'center',
+    },
+  );
+
   doc.text(
     'Unid.',
     (COLUMNA_CANTIDAD_FIN + COLUMNA_UNIDAD_FIN) / 2,
@@ -130,29 +145,78 @@ function dibujarCabeceraTabla(doc: jsPDF, y: number): void {
       align: 'center',
     },
   );
-  doc.text('Precio unit.', COLUMNA_PRECIO_FIN - 2, y + 6, {
-    align: 'right',
-  });
-  doc.text('Subtotal U$S', TABLA_DERECHA - 2, y + 6, {
-    align: 'right',
-  });
 
-  doc.line(COLUMNA_PRODUCTO_FIN, y, COLUMNA_PRODUCTO_FIN, y + ALTO_CABECERA_TABLA);
-  doc.line(COLUMNA_CANTIDAD_FIN, y, COLUMNA_CANTIDAD_FIN, y + ALTO_CABECERA_TABLA);
-  doc.line(COLUMNA_UNIDAD_FIN, y, COLUMNA_UNIDAD_FIN, y + ALTO_CABECERA_TABLA);
-  doc.line(COLUMNA_PRECIO_FIN, y, COLUMNA_PRECIO_FIN, y + ALTO_CABECERA_TABLA);
+  doc.text(
+    'Precio unit.',
+    (COLUMNA_UNIDAD_FIN + COLUMNA_PRECIO_FIN) / 2,
+    y + 6,
+    {
+      align: 'center',
+    },
+  );
+
+  doc.text(
+    'Subtotal U$S',
+    (COLUMNA_PRECIO_FIN + TABLA_DERECHA) / 2,
+    y + 6,
+    {
+      align: 'center',
+    },
+  );
+
+  doc.setLineWidth(0.2);
+  doc.line(
+    COLUMNA_PRODUCTO_FIN,
+    y,
+    COLUMNA_PRODUCTO_FIN,
+    y + ALTO_CABECERA_TABLA,
+  );
+  doc.line(
+    COLUMNA_CANTIDAD_FIN,
+    y,
+    COLUMNA_CANTIDAD_FIN,
+    y + ALTO_CABECERA_TABLA,
+  );
+  doc.line(
+    COLUMNA_UNIDAD_FIN,
+    y,
+    COLUMNA_UNIDAD_FIN,
+    y + ALTO_CABECERA_TABLA,
+  );
+  doc.line(
+    COLUMNA_PRECIO_FIN,
+    y,
+    COLUMNA_PRECIO_FIN,
+    y + ALTO_CABECERA_TABLA,
+  );
+}
+
+function calcularAltoFila(
+  doc: jsPDF,
+  linea: LineaPresupuesto,
+): { descripcionLineas: string[]; altoFila: number } {
+  const descripcionLineas = doc.splitTextToSize(
+    linea.descripcion,
+    COLUMNA_PRODUCTO_FIN - TABLA_X - 5,
+  ) as string[];
+
+  const altoTexto = descripcionLineas.length * 4.2;
+  const altoFila = Math.max(ALTO_FILA_MINIMA, altoTexto + 4);
+
+  return {
+    descripcionLineas,
+    altoFila,
+  };
 }
 
 function dibujarFilaDetalle(
   doc: jsPDF,
   linea: LineaPresupuesto,
+  descripcionLineas: string[],
   y: number,
   altoFila: number,
 ): void {
-  const descripcionLineas = doc.splitTextToSize(
-    linea.descripcion,
-    COLUMNA_PRODUCTO_FIN - TABLA_X - 5,
-  );
+  const yTexto = y + 5.4;
 
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.2);
@@ -162,12 +226,14 @@ function dibujarFilaDetalle(
   doc.setFontSize(8);
   doc.setTextColor(0, 0, 0);
 
-  doc.text(descripcionLineas, 16, y + 5);
+  doc.text(descripcionLineas, 16, yTexto, {
+    lineHeightFactor: 1.18,
+  });
 
   doc.text(
     formatearKilogramos(obtenerPesoTotalLinea(linea)),
     COLUMNA_CANTIDAD_FIN - 2,
-    y + 5,
+    yTexto,
     {
       align: 'right',
     },
@@ -176,7 +242,7 @@ function dibujarFilaDetalle(
   doc.text(
     String(linea.cantidad),
     (COLUMNA_CANTIDAD_FIN + COLUMNA_UNIDAD_FIN) / 2,
-    y + 5,
+    yTexto,
     {
       align: 'center',
     },
@@ -185,7 +251,7 @@ function dibujarFilaDetalle(
   doc.text(
     formatearImporteUSD(linea.precioUnitario),
     COLUMNA_PRECIO_FIN - 2,
-    y + 5,
+    yTexto,
     {
       align: 'right',
     },
@@ -194,7 +260,7 @@ function dibujarFilaDetalle(
   doc.text(
     formatearImporteUSD(linea.subtotal),
     TABLA_DERECHA - 2,
-    y + 5,
+    yTexto,
     {
       align: 'right',
     },
@@ -214,19 +280,22 @@ function dibujarFilaTotales(
 ): void {
   const divisionX = 105;
 
-  doc.setFillColor(210, 210, 210);
+  doc.setFillColor(205, 205, 205);
   doc.setDrawColor(0, 0, 0);
-  doc.setLineWidth(0.3);
+  doc.setLineWidth(0.35);
 
-  doc.rect(TABLA_X, y, TABLA_ANCHO, ALTO_FILA_TOTAL, 'F');
-  doc.rect(TABLA_X, y, TABLA_ANCHO, ALTO_FILA_TOTAL);
+  doc.rect(TABLA_X, y, TABLA_ANCHO, ALTO_FILA_TOTAL, 'FD');
   doc.line(divisionX, y, divisionX, y + ALTO_FILA_TOTAL);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(0, 0, 0);
 
-  doc.text(`Total de kg: ${formatearImporteUSD(totalKg)} Kg`, 18, y + 8);
+  doc.text(
+    `Total de kg: ${formatearImporteUSD(totalKg)} Kg`,
+    18,
+    y + 8,
+  );
 
   doc.text(
     `Total U$S: ${formatearImporteUSD(totalUsd)}`,
@@ -236,19 +305,13 @@ function dibujarFilaTotales(
       align: 'right',
     },
   );
+
+  doc.setLineWidth(0.2);
 }
 
-function obtenerCajaLegalY(doc: jsPDF): number {
-  const altoPagina = doc.internal.pageSize.getHeight();
-
-  return altoPagina - MARGEN_INFERIOR_CAJA_LEGAL - CAJA_LEGAL_ALTO;
-}
-
-function agregarPieLegal(
-  doc: jsPDF,
-  presupuesto: Presupuesto,
-): void {
+function agregarPieLegal(doc: jsPDF, presupuesto: Presupuesto): void {
   const cajaY = obtenerCajaLegalY(doc);
+  const separadorY = cajaY + CAJA_LEGAL_ALTO - 12;
 
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.8);
@@ -257,13 +320,13 @@ function agregarPieLegal(
     cajaY,
     CAJA_LEGAL_ANCHO,
     CAJA_LEGAL_ALTO,
-    3,
-    3,
+    3.5,
+    3.5,
     'S',
   );
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
+  doc.setFontSize(7.7);
   doc.setTextColor(0, 0, 0);
 
   const leyendas = [
@@ -281,17 +344,26 @@ function agregarPieLegal(
 
   leyendas.forEach((linea) => {
     doc.text(linea, CAJA_LEGAL_X + 4, y);
-    y += 4.5;
+    y += 4.35;
   });
 
+  doc.setLineWidth(0.3);
+  doc.line(
+    CAJA_LEGAL_X + 3,
+    separadorY,
+    CAJA_LEGAL_X + CAJA_LEGAL_ANCHO - 3,
+    separadorY,
+  );
+
   doc.setFont('helvetica', 'bold');
-  doc.text('Cotización USD al', 120, cajaY + CAJA_LEGAL_ALTO - 6);
+  doc.setFontSize(8);
+  doc.text('Cotización USD al', 125, cajaY + CAJA_LEGAL_ALTO - 5);
 
   doc.setFont('helvetica', 'normal');
   doc.text(
     presupuesto.cotizacionUsdAl || '-',
     CAJA_LEGAL_X + CAJA_LEGAL_ANCHO - 4,
-    cajaY + CAJA_LEGAL_ALTO - 6,
+    cajaY + CAJA_LEGAL_ALTO - 5,
     {
       align: 'right',
     },
@@ -308,8 +380,18 @@ function agregarNumerosPagina(doc: jsPDF): void {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     doc.setTextColor(0, 0, 0);
-    doc.text(`Pag. ${pagina}/${totalPaginas}`, 164, 41);
+    doc.text(`Pag. ${pagina}/${totalPaginas}`, 150, 41);
   }
+}
+
+function iniciarPaginaDeDetalle(
+  doc: jsPDF,
+  presupuesto: Presupuesto,
+): number {
+  dibujarEncabezado(doc, presupuesto);
+  dibujarCabeceraTabla(doc, Y_INICIO_TABLA);
+
+  return Y_INICIO_TABLA + ALTO_CABECERA_TABLA;
 }
 
 export async function generarYGuardarPdfPresupuesto(
@@ -322,10 +404,9 @@ export async function generarYGuardarPdfPresupuesto(
     format: 'a4',
   });
 
-  let y = 96;
-
+  const altoPagina = doc.internal.pageSize.getHeight();
+  const limiteDetallePagina = altoPagina - MARGEN_INFERIOR_DETALLE;
   const cajaLegalY = obtenerCajaLegalY(doc);
-  const limiteInferiorDetalle = cajaLegalY - ALTO_FILA_TOTAL - 6;
 
   const totalKg = lineas.reduce(
     (acumulado, linea) => acumulado + obtenerPesoTotalLinea(linea),
@@ -337,58 +418,54 @@ export async function generarYGuardarPdfPresupuesto(
     0,
   );
 
-  dibujarEncabezado(doc, presupuesto);
-  dibujarCabeceraTabla(doc, y);
-  y += ALTO_CABECERA_TABLA;
+  let y = iniciarPaginaDeDetalle(doc, presupuesto);
 
-  lineas.forEach((linea) => {
+  lineas.forEach((linea, indice) => {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
 
-    const descripcionLineas = doc.splitTextToSize(
-      linea.descripcion,
-      COLUMNA_PRODUCTO_FIN - TABLA_X - 5,
-    );
-    const altoFila = Math.max(12, descripcionLineas.length * 5 + 5);
+    const { descripcionLineas, altoFila } = calcularAltoFila(doc, linea);
+    const esUltimaLinea = indice === lineas.length - 1;
 
-    if (y + altoFila > limiteInferiorDetalle) {
+    const necesitaEspacioParaTotalesYPie =
+      esUltimaLinea &&
+      y + altoFila + ALTO_FILA_TOTAL + 5 > cajaLegalY;
+
+    const noEntraEnPagina =
+      y + altoFila > limiteDetallePagina;
+
+    if (noEntraEnPagina || necesitaEspacioParaTotalesYPie) {
       doc.addPage();
-      dibujarEncabezado(doc, presupuesto);
-      y = 96;
-      dibujarCabeceraTabla(doc, y);
-      y += ALTO_CABECERA_TABLA;
+      y = iniciarPaginaDeDetalle(doc, presupuesto);
     }
 
-    dibujarFilaDetalle(doc, linea, y, altoFila);
+    dibujarFilaDetalle(
+      doc,
+      linea,
+      descripcionLineas,
+      y,
+      altoFila,
+    );
+
     y += altoFila;
   });
 
   if (lineas.length === 0) {
-    if (y + 14 > limiteInferiorDetalle) {
-      doc.addPage();
-      dibujarEncabezado(doc, presupuesto);
-      y = 96;
-      dibujarCabeceraTabla(doc, y);
-      y += ALTO_CABECERA_TABLA;
-    }
-
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(0.2);
     doc.rect(TABLA_X, y, TABLA_ANCHO, 14);
     doc.text('Sin productos cargados.', 16, y + 8);
     y += 14;
   }
 
-  if (y + ALTO_FILA_TOTAL > cajaLegalY - 6) {
+  if (y + ALTO_FILA_TOTAL + 5 > cajaLegalY) {
     doc.addPage();
-    dibujarEncabezado(doc, presupuesto);
-    y = 96;
-    dibujarCabeceraTabla(doc, y);
-    y += ALTO_CABECERA_TABLA;
+    y = iniciarPaginaDeDetalle(doc, presupuesto);
   }
 
   dibujarFilaTotales(doc, y, totalKg, totalUsd);
-
   agregarPieLegal(doc, presupuesto);
   agregarNumerosPagina(doc);
 
