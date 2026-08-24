@@ -1,5 +1,6 @@
 export type EstadoPresupuesto = 'borrador' | 'emitido' | 'enviado' | 'anulado';
 export type EstadoDrive = 'tablet' | 'pendiente' | 'realizada';
+export type TipoCalculoLinea = 'peso' | 'metro' | 'plancha';
 
 export interface Presupuesto {
   id: string;
@@ -37,8 +38,35 @@ export interface LineaPresupuesto {
   precioUnitario: number;
 
   /**
-   * Campo vigente.
-   * En pantalla se muestra como "Peso total".
+   * Define cómo se calcula el subtotal de la línea.
+   * - peso: perfiles/barras y otros productos cotizados por kg.
+   * - metro: chapas acanaladas/trapezoidales cotizadas por metro lineal.
+   * - plancha: planchas calculadas por volumen y cotizadas por kg.
+   *
+   * Es opcional para mantener compatibilidad con líneas antiguas.
+   * Si no existe, se interpreta como "peso".
+   */
+  tipoCalculo?: TipoCalculoLinea;
+
+  /**
+   * Largo del producto.
+   * - peso y metro: metros.
+   * - plancha: milímetros.
+   */
+  largo?: number;
+
+  /** Ancho de una plancha, en milímetros. */
+  ancho?: number;
+
+  /** Espesor de una plancha, en milímetros. */
+  espesor?: number;
+
+  /** Masa nominal del producto de proveedor, en kg/m, cuando corresponda. */
+  masaNominal?: number;
+
+  /**
+   * Peso total en kg para productos cotizados por peso y para planchas.
+   * En productos cotizados por metro se conserva en 0.
    */
   pesoTotal: number;
 

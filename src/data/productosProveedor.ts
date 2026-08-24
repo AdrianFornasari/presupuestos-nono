@@ -1,8 +1,11 @@
+import type { TipoCalculoLinea } from '../types/presupuesto';
+
 export type ProductoProveedor = {
   id: string;
   tipo: string;
   descripcion: string;
   masaNominal: number;
+  tipoCalculo?: TipoCalculoLinea;
 };
 
 export const PRODUCTOS_PROVEEDOR: ProductoProveedor[] = [
@@ -569,4 +572,25 @@ export const PRODUCTOS_PROVEEDOR: ProductoProveedor[] = [
   { id: "prod-0561", tipo: "Barra cuadrada", descripcion: "Barra cuadrada 1/2\"", masaNominal: 1.27 },
   { id: "prod-0562", tipo: "Barra cuadrada", descripcion: "Barra cuadrada 9/16\"", masaNominal: 1.6 },
   { id: "prod-0563", tipo: "Barra cuadrada", descripcion: "Barra cuadrada 5/8\"", masaNominal: 1.98 },
+  {
+    id: "prod-0564",
+    tipo: "Chapa acanalada",
+    descripcion: "Chapa acanalada",
+    masaNominal: 0,
+    tipoCalculo: "metro",
+  },
+  {
+    id: "prod-0565",
+    tipo: "Chapa trapezoidal",
+    descripcion: "Chapa trapezoidal",
+    masaNominal: 0,
+    tipoCalculo: "metro",
+  },
+  {
+    id: "prod-0566",
+    tipo: "Planchas",
+    descripcion: "Planchas",
+    masaNominal: 0,
+    tipoCalculo: "plancha",
+  },
 ];

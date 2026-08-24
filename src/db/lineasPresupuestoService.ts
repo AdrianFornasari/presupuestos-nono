@@ -1,4 +1,7 @@
-import type { LineaPresupuesto } from '../types/presupuesto';
+import type {
+  LineaPresupuesto,
+  TipoCalculoLinea,
+} from '../types/presupuesto';
 import { fechaHoraAhoraISO, redondearImporte } from '../utils/format';
 import { db } from './appDb';
 
@@ -8,14 +11,41 @@ interface DatosLineaPresupuesto {
   unidad: string;
   precioUnitario: number;
   pesoTotal: number;
+  tipoCalculo: TipoCalculoLinea;
+  largo?: number;
+  ancho?: number;
+  espesor?: number;
+  masaNominal?: number;
+}
+
+function obtenerTipoCalculoLinea(linea: LineaPresupuesto): TipoCalculoLinea {
+  return linea.tipoCalculo ?? 'peso';
 }
 
 function obtenerPesoTotalLinea(linea: LineaPresupuesto): number {
   return linea.pesoTotal ?? linea.acumulado ?? 0;
 }
 
+function calcularSubtotalDatos(datos: DatosLineaPresupuesto): number {
+  if (datos.tipoCalculo === 'metro') {
+    const largo = datos.largo ?? 0;
+    return redondearImporte(datos.cantidad * largo * datos.precioUnitario);
+  }
+
+  return redondearImporte(datos.pesoTotal * datos.precioUnitario);
+}
+
 function calcularSubtotalLinea(linea: LineaPresupuesto): number {
-  return redondearImporte(obtenerPesoTotalLinea(linea) * linea.precioUnitario);
+  const tipoCalculo = obtenerTipoCalculoLinea(linea);
+
+  if (tipoCalculo === 'metro') {
+    const largo = linea.largo ?? 0;
+    return redondearImporte(linea.cantidad * largo * linea.precioUnitario);
+  }
+
+  return redondearImporte(
+    obtenerPesoTotalLinea(linea) * linea.precioUnitario,
+  );
 }
 
 export async function listarLineasPorPresupuesto(
@@ -28,10 +58,11 @@ export async function listarLineasPorPresupuesto(
 
   return lineas.map((linea) => {
     const pesoTotal = obtenerPesoTotalLinea(linea);
-    const subtotal = redondearImporte(pesoTotal * linea.precioUnitario);
+    const subtotal = calcularSubtotalLinea(linea);
 
     return {
       ...linea,
+      tipoCalculo: obtenerTipoCalculoLinea(linea),
       pesoTotal,
       acumulado: pesoTotal,
       subtotal,
@@ -60,9 +91,7 @@ export async function agregarLineaPresupuesto(
           ? 1
           : Math.max(...lineasActuales.map((linea) => linea.orden)) + 1;
 
-      const subtotal = redondearImporte(
-        datos.pesoTotal * datos.precioUnitario,
-      );
+      const subtotal = calcularSubtotalDatos(datos);
 
       const nuevaLinea: LineaPresupuesto = {
         id: crypto.randomUUID(),
@@ -72,6 +101,11 @@ export async function agregarLineaPresupuesto(
         cantidad: datos.cantidad,
         unidad: datos.unidad,
         precioUnitario: datos.precioUnitario,
+        tipoCalculo: datos.tipoCalculo,
+        largo: datos.largo,
+        ancho: datos.ancho,
+        espesor: datos.espesor,
+        masaNominal: datos.masaNominal,
         pesoTotal: datos.pesoTotal,
         acumulado: datos.pesoTotal,
         subtotal,
@@ -103,15 +137,18 @@ export async function actualizarLineaPresupuesto(
         throw new Error('No se encontró el producto para editar.');
       }
 
-      const subtotal = redondearImporte(
-        datos.pesoTotal * datos.precioUnitario,
-      );
+      const subtotal = calcularSubtotalDatos(datos);
 
       await db.lineasPresupuesto.update(lineaId, {
         descripcion: datos.descripcion,
         cantidad: datos.cantidad,
         unidad: datos.unidad,
         precioUnitario: datos.precioUnitario,
+        tipoCalculo: datos.tipoCalculo,
+        largo: datos.largo,
+        ancho: datos.ancho,
+        espesor: datos.espesor,
+        masaNominal: datos.masaNominal,
         pesoTotal: datos.pesoTotal,
         acumulado: datos.pesoTotal,
         subtotal,

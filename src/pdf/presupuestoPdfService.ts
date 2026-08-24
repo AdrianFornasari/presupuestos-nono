@@ -69,8 +69,35 @@ function obtenerPesoTotalLinea(linea: LineaPresupuesto): number {
   return linea.pesoTotal ?? linea.acumulado ?? 0;
 }
 
+function obtenerTipoCalculoLinea(
+  linea: LineaPresupuesto,
+): 'peso' | 'metro' | 'plancha' {
+  return linea.tipoCalculo ?? 'peso';
+}
+
 function formatearKilogramos(valor: number): string {
   return `${formatearImporteUSD(valor)} Kg`;
+}
+
+function formatearCantidadCotizada(linea: LineaPresupuesto): string {
+  if (obtenerTipoCalculoLinea(linea) === 'metro') {
+    const metrosTotales = linea.cantidad * (linea.largo ?? 0);
+    return `${formatearImporteUSD(metrosTotales)} m`;
+  }
+
+  return formatearKilogramos(obtenerPesoTotalLinea(linea));
+}
+
+function obtenerDescripcionPdf(linea: LineaPresupuesto): string {
+  if (obtenerTipoCalculoLinea(linea) === 'plancha') {
+    const largo = linea.largo ?? 0;
+    const ancho = linea.ancho ?? 0;
+    const espesor = linea.espesor ?? 0;
+
+    return `${linea.descripcion} - ${formatearImporteUSD(largo)} x ${formatearImporteUSD(ancho)} x ${formatearImporteUSD(espesor)} mm`;
+  }
+
+  return linea.descripcion;
 }
 
 function obtenerCajaLegalY(doc: jsPDF): number {
@@ -246,7 +273,7 @@ function calcularAltoFila(
   setFontSizeTabla(doc, 8);
 
   const descripcionLineas = doc.splitTextToSize(
-    linea.descripcion,
+    obtenerDescripcionPdf(linea),
     productoFin - TABLA_X - 5,
   ) as string[];
 
@@ -283,7 +310,7 @@ function dibujarFilaDetalle(
   });
 
   doc.text(
-    formatearKilogramos(obtenerPesoTotalLinea(linea)),
+    formatearCantidadCotizada(linea),
     cantidadFin - 2,
     yTexto,
     {
@@ -467,10 +494,13 @@ export async function generarYGuardarPdfPresupuesto(
   const limiteDetallePagina = altoPagina - MARGEN_INFERIOR_DETALLE;
   const cajaLegalY = obtenerCajaLegalY(doc);
 
-  const totalKg = lineas.reduce(
-    (acumulado, linea) => acumulado + obtenerPesoTotalLinea(linea),
-    0,
-  );
+  const totalKg = lineas.reduce((acumulado, linea) => {
+    if (obtenerTipoCalculoLinea(linea) === 'metro') {
+      return acumulado;
+    }
+
+    return acumulado + obtenerPesoTotalLinea(linea);
+  }, 0);
 
   const totalUsd = lineas.reduce(
     (acumulado, linea) => acumulado + linea.subtotal,
