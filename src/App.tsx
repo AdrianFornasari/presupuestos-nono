@@ -55,9 +55,9 @@ import {
   type EstadoAlmacenamientoPersistente,
 } from './utils/persistentStorage';
 
-// BUILD: PRODUCTOS-PROVEEDOR-V9-20260829 - tubos integrados con calculadora
+// BUILD: PRODUCTOS-PROVEEDOR-V10-20260829 - recortes + ingreso manual de peso
 type Pantalla = 'inicio' | 'editar' | 'configuracion';
-type MetodoIngresoProducto = 'proveedor' | 'calculadora';
+type MetodoIngresoProducto = 'proveedor' | 'calculadora' | 'manual-peso';
 
 const TIPOS_SOLO_CALCULADORA = [
   'Tubo redondo',
@@ -65,8 +65,18 @@ const TIPOS_SOLO_CALCULADORA = [
   'Tubo rectangular',
 ] as const;
 
+const TIPOS_SOLO_PESO_MANUAL = ['Recortes'] as const;
+
 function esTipoSoloCalculadora(tipo: string): boolean {
   return (TIPOS_SOLO_CALCULADORA as readonly string[]).includes(tipo);
+}
+
+function esTipoSoloPesoManual(tipo: string): boolean {
+  return (TIPOS_SOLO_PESO_MANUAL as readonly string[]).includes(tipo);
+}
+
+function esTipoSinSubproducto(tipo: string): boolean {
+  return esTipoSoloCalculadora(tipo) || esTipoSoloPesoManual(tipo);
 }
 
 function textoEstadoDrive(estado: Presupuesto['estadoDrive']): string {
@@ -157,6 +167,7 @@ function App() {
         new Set([
           ...PRODUCTOS_PROVEEDOR.map((producto) => producto.tipo),
           ...TIPOS_SOLO_CALCULADORA,
+          ...TIPOS_SOLO_PESO_MANUAL,
         ]),
       ),
     [],
@@ -322,6 +333,13 @@ function App() {
       return;
     }
 
+    if (esTipoSoloPesoManual(tipo)) {
+      setMetodoIngresoProducto('manual-peso');
+      setDescripcionProducto(tipo);
+      setCantidadProducto('1');
+      return;
+    }
+
     setMetodoIngresoProducto('proveedor');
     setDescripcionProducto('');
     setLargoProducto('12,00');
@@ -381,6 +399,34 @@ function App() {
 
   function cerrarSelectorProducto() {
     setSelectorProductoAbierto(false);
+  }
+
+  function prepararIngresoPesoManual() {
+    const descripcionManual = esTipoSoloPesoManual(tipoProductoSeleccionado)
+      ? tipoProductoSeleccionado
+      : descripcionProducto;
+
+    setMetodoIngresoProducto('manual-peso');
+    setProductoProveedorId('');
+    setTipoCalculoProducto('peso');
+    setDescripcionProducto(descripcionManual);
+    setCantidadProducto('1');
+    setLargoProducto('');
+    setAnchoProducto('');
+    setEspesorProducto('');
+    setMasaNominalProducto(null);
+    setPesoTotalProducto('');
+    setSelectorProductoAbierto(false);
+    setCalculadoraAbierta(false);
+    setMensaje(
+      esTipoSoloPesoManual(tipoProductoSeleccionado)
+        ? 'Recortes se cotiza ingresando manualmente el peso total y el precio USD/kg.'
+        : 'Ingreso manual habilitado. Cargá la descripción, el peso total y el precio USD/kg.',
+    );
+
+    window.setTimeout(() => {
+      descripcionProductoRef.current?.focus();
+    }, 0);
   }
 
   function prepararIngresoPorCalculadora() {
@@ -458,6 +504,11 @@ function App() {
 
     if (esTipoSoloCalculadora(tipoProductoSeleccionado)) {
       prepararIngresoPorCalculadora();
+      return;
+    }
+
+    if (esTipoSoloPesoManual(tipoProductoSeleccionado)) {
+      prepararIngresoPesoManual();
       return;
     }
 
@@ -752,8 +803,12 @@ function App() {
     ).sort((a, b) => b.descripcion.length - a.descripcion.length)[0];
 
     const tipoCalculo = linea.tipoCalculo ?? coincidencia?.tipoCalculo ?? 'peso';
-    const metodoIngreso: MetodoIngresoProducto =
-      coincidencia || tipoCalculo !== 'peso' ? 'proveedor' : 'calculadora';
+    const esRecortes = linea.descripcion.trim().startsWith('Recortes');
+    const metodoIngreso: MetodoIngresoProducto = esRecortes
+      ? 'manual-peso'
+      : coincidencia || tipoCalculo !== 'peso'
+        ? 'proveedor'
+        : 'calculadora';
 
     setMetodoIngresoProducto(metodoIngreso);
     setLineaEnEdicion(linea);
@@ -775,7 +830,11 @@ function App() {
         : '',
     );
 
-    if (coincidencia) {
+    if (esRecortes) {
+      setTipoProductoSeleccionado('Recortes');
+      setProductoProveedorId('');
+      setCantidadProducto('1');
+    } else if (coincidencia) {
       setTipoProductoSeleccionado(coincidencia.tipo);
       setProductoProveedorId(coincidencia.id);
     } else {
@@ -810,7 +869,10 @@ function App() {
         formatearDecimal4SinMiles(obtenerPesoTotalLinea(linea)),
       );
 
-      if (metodoIngreso === 'calculadora') {
+      if (
+        metodoIngreso === 'calculadora' ||
+        metodoIngreso === 'manual-peso'
+      ) {
         setLargoProducto('');
       } else if (linea.largo && linea.largo > 0) {
         setLargoProducto(formatearDecimal2SinMiles(linea.largo));
@@ -885,10 +947,15 @@ function App() {
       return;
     }
 
-    if (metodoIngresoProducto === 'calculadora') {
+    if (
+      metodoIngresoProducto === 'calculadora' ||
+      metodoIngresoProducto === 'manual-peso'
+    ) {
       if (!Number.isFinite(pesoTotal) || pesoTotal <= 0) {
         setMensaje(
-          'Calculá el peso total con la calculadora de metales antes de agregar el producto.',
+          metodoIngresoProducto === 'calculadora'
+            ? 'Calculá el peso total con la calculadora de metales antes de agregar el producto.'
+            : 'Ingresá manualmente un peso total mayor que cero.',
         );
         return;
       }
@@ -945,7 +1012,10 @@ function App() {
     }
 
     const tipoCalculoLinea: TipoCalculoLinea =
-      metodoIngresoProducto === 'calculadora' ? 'peso' : tipoCalculoProducto;
+      metodoIngresoProducto === 'calculadora' ||
+      metodoIngresoProducto === 'manual-peso'
+        ? 'peso'
+        : tipoCalculoProducto;
 
     const datosLinea = {
       descripcion,
@@ -955,7 +1025,10 @@ function App() {
       pesoTotal,
       tipoCalculo: tipoCalculoLinea,
       largo:
-        metodoIngresoProducto === 'calculadora' ? undefined : largo,
+        metodoIngresoProducto === 'calculadora' ||
+        metodoIngresoProducto === 'manual-peso'
+          ? undefined
+          : largo,
       ancho:
         metodoIngresoProducto === 'proveedor' &&
         tipoCalculoProducto === 'plancha'
@@ -1263,7 +1336,7 @@ function App() {
           </select>
         </label>
 
-        {esTipoSoloCalculadora(tipoProductoSeleccionado) ? (
+        {esTipoSinSubproducto(tipoProductoSeleccionado) ? (
           <div
             className="product-full-field"
             style={{
@@ -1276,8 +1349,9 @@ function App() {
           >
             <strong>{tipoProductoSeleccionado}</strong>
             <p style={{ margin: '8px 0 0', color: '#ffffff' }}>
-              Este producto no tiene subproductos en la tabla. Se cotiza
-              mediante la calculadora de metales.
+              {esTipoSoloPesoManual(tipoProductoSeleccionado)
+                ? 'Este producto no tiene subproductos. Se cotiza ingresando manualmente el peso total y el precio USD/kg.'
+                : 'Este producto no tiene subproductos en la tabla. Se cotiza mediante la calculadora de metales.'}
             </p>
           </div>
         ) : (
@@ -1345,13 +1419,13 @@ function App() {
             onClick={confirmarSeleccionProducto}
             disabled={
               !tipoProductoSeleccionado ||
-              (!esTipoSoloCalculadora(tipoProductoSeleccionado) &&
+              (!esTipoSinSubproducto(tipoProductoSeleccionado) &&
                 !productoProveedorId)
             }
             style={{
               color:
                 tipoProductoSeleccionado &&
-                (esTipoSoloCalculadora(tipoProductoSeleccionado) ||
+                (esTipoSinSubproducto(tipoProductoSeleccionado) ||
                   productoProveedorId)
                   ? undefined
                   : '#808080',
@@ -1360,16 +1434,29 @@ function App() {
           >
             {esTipoSoloCalculadora(tipoProductoSeleccionado)
               ? 'Continuar con calculadora'
-              : 'Usar producto de tabla'}
+              : esTipoSoloPesoManual(tipoProductoSeleccionado)
+                ? 'Ingresar peso y precio'
+                : 'Usar producto de tabla'}
           </button>
 
-          {!esTipoSoloCalculadora(tipoProductoSeleccionado) && (
+          {!esTipoSoloCalculadora(tipoProductoSeleccionado) &&
+            !esTipoSoloPesoManual(tipoProductoSeleccionado) && (
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={prepararIngresoPorCalculadora}
+              >
+                Usar calculadora de metales
+              </button>
+            )}
+
+          {!esTipoSoloPesoManual(tipoProductoSeleccionado) && (
             <button
               type="button"
               className="secondary-button"
-              onClick={prepararIngresoPorCalculadora}
+              onClick={prepararIngresoPesoManual}
             >
-              Usar calculadora de metales
+              Ingresar peso y precio manualmente
             </button>
           )}
 
@@ -1630,13 +1717,48 @@ function App() {
                 className="secondary-button"
                 onClick={abrirSelectorProducto}
               >
-                {metodoIngresoProducto === 'calculadora'
+                {metodoIngresoProducto === 'calculadora' ||
+                metodoIngresoProducto === 'manual-peso'
                   ? 'Cambiar método de ingreso'
                   : productoProveedorId
                     ? 'Cambiar producto'
                     : 'Seleccionar producto'}
               </button>
             </div>
+
+            {metodoIngresoProducto === 'manual-peso' && (
+              <>
+                <div className="product-two-column-grid">
+                  <label className="field-label">
+                    Peso total (kg)
+                    <input
+                      name="pesoTotal"
+                      className="text-input product-number-input"
+                      inputMode="decimal"
+                      autoComplete="off"
+                      placeholder="0,0000"
+                      value={pesoTotalProducto}
+                      onChange={manejarCambioPesoTotal}
+                      onBlur={completarPesoTotalProducto}
+                    />
+                  </label>
+
+                  <label className="field-label">
+                    Precio unitario USD/kg
+                    <input
+                      name="precioUnitario"
+                      className="text-input product-number-input"
+                      inputMode="decimal"
+                      autoComplete="off"
+                      placeholder="0,0000"
+                      value={precioUnitarioProducto}
+                      onChange={manejarCambioPrecioUnitario}
+                      onBlur={completarPrecioUnitario}
+                    />
+                  </label>
+                </div>
+              </>
+            )}
 
             {metodoIngresoProducto === 'calculadora' && (
               <>
