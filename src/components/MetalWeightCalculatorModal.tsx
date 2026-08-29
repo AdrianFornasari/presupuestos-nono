@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useMemo,
   useState,
   type ChangeEvent,
@@ -8,6 +9,9 @@ import './MetalWeightCalculatorModal.css';
 
 type FormaMetal =
   | 'hierro-redondo'
+  | 'tubo-redondo'
+  | 'tubo-cuadrado'
+  | 'tubo-rectangular'
   | 'perfil-t'
   | 'perfil-doble-t'
   | 'perfil-u'
@@ -23,6 +27,10 @@ interface MetalWeightCalculatorModalProps {
   abierto: boolean;
   cantidad: number;
   precioUnitario: number;
+  formaInicial?:
+    | 'tubo-redondo'
+    | 'tubo-cuadrado'
+    | 'tubo-rectangular';
   onAceptar: (pesoCalculado: number) => void;
   onCerrar: () => void;
 }
@@ -223,6 +231,14 @@ function esPerfil(forma: FormaMetal): boolean {
   );
 }
 
+function esTubo(forma: FormaMetal): boolean {
+  return (
+    forma === 'tubo-redondo' ||
+    forma === 'tubo-cuadrado' ||
+    forma === 'tubo-rectangular'
+  );
+}
+
 function esCotizacionPorMetro(forma: FormaMetal): boolean {
   return forma === 'chapa-techo';
 }
@@ -316,6 +332,53 @@ function areaHierroRedondoMm2(diametroMm: number): number {
   return Math.PI * radioMm * radioMm;
 }
 
+function areaTuboRedondoMm2(
+  diametroExteriorMm: number,
+  espesorMm: number,
+): number {
+  const diametroInteriorMm = diametroExteriorMm - 2 * espesorMm;
+
+  if (diametroInteriorMm <= 0) return Number.NaN;
+
+  return (
+    (Math.PI / 4) *
+    (diametroExteriorMm * diametroExteriorMm -
+      diametroInteriorMm * diametroInteriorMm)
+  );
+}
+
+function areaTuboCuadradoMm2(
+  ladoExteriorMm: number,
+  espesorMm: number,
+): number {
+  const ladoInteriorMm = ladoExteriorMm - 2 * espesorMm;
+
+  if (ladoInteriorMm <= 0) return Number.NaN;
+
+  return (
+    ladoExteriorMm * ladoExteriorMm -
+    ladoInteriorMm * ladoInteriorMm
+  );
+}
+
+function areaTuboRectangularMm2(
+  anchoExteriorMm: number,
+  altoExteriorMm: number,
+  espesorMm: number,
+): number {
+  const anchoInteriorMm = anchoExteriorMm - 2 * espesorMm;
+  const altoInteriorMm = altoExteriorMm - 2 * espesorMm;
+
+  if (anchoInteriorMm <= 0 || altoInteriorMm <= 0) {
+    return Number.NaN;
+  }
+
+  return (
+    anchoExteriorMm * altoExteriorMm -
+    anchoInteriorMm * altoInteriorMm
+  );
+}
+
 function areaPerfilTMm2(
   altoTotalMm: number,
   anchoAlaMm: number,
@@ -388,6 +451,80 @@ function calcularValorUnitario(
     if (!perfil) return Number.NaN;
 
     return perfil.pesoKgPorMetro * (largoMm / 1000);
+  }
+
+  if (forma === 'tubo-redondo') {
+    const diametroExteriorMm = parsearDecimal(valores.diametroExteriorMm);
+    const espesorTuboMm = parsearDecimal(valores.espesorTuboMm);
+
+    if (
+      !Number.isFinite(diametroExteriorMm) ||
+      !Number.isFinite(espesorTuboMm) ||
+      diametroExteriorMm <= 0 ||
+      espesorTuboMm <= 0 ||
+      espesorTuboMm * 2 >= diametroExteriorMm
+    ) {
+      return Number.NaN;
+    }
+
+    const areaMm2 = areaTuboRedondoMm2(
+      diametroExteriorMm,
+      espesorTuboMm,
+    );
+    const volumenM3 = mm3AM3(areaMm2 * largoMm);
+
+    return volumenM3 * DENSIDAD_ACERO_KG_M3;
+  }
+
+  if (forma === 'tubo-cuadrado') {
+    const ladoExteriorMm = parsearDecimal(valores.ladoExteriorMm);
+    const espesorTuboMm = parsearDecimal(valores.espesorTuboMm);
+
+    if (
+      !Number.isFinite(ladoExteriorMm) ||
+      !Number.isFinite(espesorTuboMm) ||
+      ladoExteriorMm <= 0 ||
+      espesorTuboMm <= 0 ||
+      espesorTuboMm * 2 >= ladoExteriorMm
+    ) {
+      return Number.NaN;
+    }
+
+    const areaMm2 = areaTuboCuadradoMm2(
+      ladoExteriorMm,
+      espesorTuboMm,
+    );
+    const volumenM3 = mm3AM3(areaMm2 * largoMm);
+
+    return volumenM3 * DENSIDAD_ACERO_KG_M3;
+  }
+
+  if (forma === 'tubo-rectangular') {
+    const anchoExteriorMm = parsearDecimal(valores.anchoExteriorMm);
+    const altoExteriorMm = parsearDecimal(valores.altoExteriorMm);
+    const espesorTuboMm = parsearDecimal(valores.espesorTuboMm);
+
+    if (
+      !Number.isFinite(anchoExteriorMm) ||
+      !Number.isFinite(altoExteriorMm) ||
+      !Number.isFinite(espesorTuboMm) ||
+      anchoExteriorMm <= 0 ||
+      altoExteriorMm <= 0 ||
+      espesorTuboMm <= 0 ||
+      espesorTuboMm * 2 >= anchoExteriorMm ||
+      espesorTuboMm * 2 >= altoExteriorMm
+    ) {
+      return Number.NaN;
+    }
+
+    const areaMm2 = areaTuboRectangularMm2(
+      anchoExteriorMm,
+      altoExteriorMm,
+      espesorTuboMm,
+    );
+    const volumenM3 = mm3AM3(areaMm2 * largoMm);
+
+    return volumenM3 * DENSIDAD_ACERO_KG_M3;
   }
 
   if (forma === 'chapa') {
@@ -555,10 +692,18 @@ function calcularValorUnitario(
 
 function valoresIniciales(forma: FormaMetal): Record<string, string> {
   return {
-    largoMm: esPerfil(forma) ? LARGO_DEFAULT_PERFILES : '',
+    largoMm:
+      esPerfil(forma) || esTubo(forma)
+        ? LARGO_DEFAULT_PERFILES
+        : '',
     anchoMm: '',
     espesorMm: '',
     diametroMm: '',
+    diametroExteriorMm: '',
+    ladoExteriorMm: '',
+    anchoExteriorMm: '',
+    altoExteriorMm: '',
+    espesorTuboMm: '',
     altoTotalMm: '',
     anchoAlaMm: '',
     espesorAlaMm: '',
@@ -571,6 +716,7 @@ function MetalWeightCalculatorModal({
   abierto,
   cantidad,
   precioUnitario,
+  formaInicial,
   onAceptar,
   onCerrar,
 }: MetalWeightCalculatorModalProps) {
@@ -585,6 +731,15 @@ function MetalWeightCalculatorModal({
   const [valores, setValores] = useState<Record<string, string>>(
     valoresIniciales('hierro-redondo'),
   );
+
+  useEffect(() => {
+    if (!abierto || !formaInicial) return;
+
+    setForma(formaInicial);
+    setModoCalculoPerfil('manual');
+    setPerfilNormalizadoId('');
+    setValores(valoresIniciales(formaInicial));
+  }, [abierto, formaInicial]);
 
   const perfilesNormalizados = obtenerPerfilesNormalizados(forma);
   const permiteTabla = perfilesNormalizados.length > 0;
@@ -696,6 +851,9 @@ function MetalWeightCalculatorModal({
           Producto
           <select value={forma} onChange={cambiarForma}>
             <option value="hierro-redondo">Hierro redondo</option>
+            <option value="tubo-redondo">Tubo redondo</option>
+            <option value="tubo-cuadrado">Tubo cuadrado</option>
+            <option value="tubo-rectangular">Tubo rectangular</option>
             <option value="perfil-t">Perfil T</option>
             <option value="perfil-doble-t">Perfil doble T / IPN</option>
             <option value="perfil-u">Perfil U / UPN</option>
@@ -776,6 +934,138 @@ function MetalWeightCalculatorModal({
                     </option>
                   ))}
                 </select>
+              </label>
+
+              <label className="metal-field">
+                Largo mm
+                <input
+                  name="largoMm"
+                  value={valores.largoMm}
+                  onChange={actualizarValor}
+                  onBlur={completarValor}
+                  inputMode="decimal"
+                  placeholder="12000,0000"
+                />
+              </label>
+            </>
+          )}
+
+          {forma === 'tubo-redondo' && (
+            <>
+              <label className="metal-field">
+                Diámetro exterior mm
+                <input
+                  name="diametroExteriorMm"
+                  value={valores.diametroExteriorMm}
+                  onChange={actualizarValor}
+                  onBlur={completarValor}
+                  inputMode="decimal"
+                  placeholder="0,0000"
+                />
+              </label>
+
+              <label className="metal-field">
+                Espesor mm
+                <input
+                  name="espesorTuboMm"
+                  value={valores.espesorTuboMm}
+                  onChange={actualizarValor}
+                  onBlur={completarValor}
+                  inputMode="decimal"
+                  placeholder="0,0000"
+                />
+              </label>
+
+              <label className="metal-field">
+                Largo mm
+                <input
+                  name="largoMm"
+                  value={valores.largoMm}
+                  onChange={actualizarValor}
+                  onBlur={completarValor}
+                  inputMode="decimal"
+                  placeholder="12000,0000"
+                />
+              </label>
+            </>
+          )}
+
+          {forma === 'tubo-cuadrado' && (
+            <>
+              <label className="metal-field">
+                Lado exterior mm
+                <input
+                  name="ladoExteriorMm"
+                  value={valores.ladoExteriorMm}
+                  onChange={actualizarValor}
+                  onBlur={completarValor}
+                  inputMode="decimal"
+                  placeholder="0,0000"
+                />
+              </label>
+
+              <label className="metal-field">
+                Espesor mm
+                <input
+                  name="espesorTuboMm"
+                  value={valores.espesorTuboMm}
+                  onChange={actualizarValor}
+                  onBlur={completarValor}
+                  inputMode="decimal"
+                  placeholder="0,0000"
+                />
+              </label>
+
+              <label className="metal-field">
+                Largo mm
+                <input
+                  name="largoMm"
+                  value={valores.largoMm}
+                  onChange={actualizarValor}
+                  onBlur={completarValor}
+                  inputMode="decimal"
+                  placeholder="12000,0000"
+                />
+              </label>
+            </>
+          )}
+
+          {forma === 'tubo-rectangular' && (
+            <>
+              <label className="metal-field">
+                Ancho exterior mm
+                <input
+                  name="anchoExteriorMm"
+                  value={valores.anchoExteriorMm}
+                  onChange={actualizarValor}
+                  onBlur={completarValor}
+                  inputMode="decimal"
+                  placeholder="0,0000"
+                />
+              </label>
+
+              <label className="metal-field">
+                Alto exterior mm
+                <input
+                  name="altoExteriorMm"
+                  value={valores.altoExteriorMm}
+                  onChange={actualizarValor}
+                  onBlur={completarValor}
+                  inputMode="decimal"
+                  placeholder="0,0000"
+                />
+              </label>
+
+              <label className="metal-field">
+                Espesor mm
+                <input
+                  name="espesorTuboMm"
+                  value={valores.espesorTuboMm}
+                  onChange={actualizarValor}
+                  onBlur={completarValor}
+                  inputMode="decimal"
+                  placeholder="0,0000"
+                />
               </label>
 
               <label className="metal-field">

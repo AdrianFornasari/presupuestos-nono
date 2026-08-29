@@ -8,6 +8,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from 'react';
+import MetalWeightCalculatorModal from './components/MetalWeightCalculatorModal';
 import {
   crearBackupJson,
   descargarBackup,
@@ -54,8 +55,19 @@ import {
   type EstadoAlmacenamientoPersistente,
 } from './utils/persistentStorage';
 
-// BUILD: PRODUCTOS-PROVEEDOR-V5-20260823 - perfiles, chapas por metro y planchas
+// BUILD: PRODUCTOS-PROVEEDOR-V9-20260829 - tubos integrados con calculadora
 type Pantalla = 'inicio' | 'editar' | 'configuracion';
+type MetodoIngresoProducto = 'proveedor' | 'calculadora';
+
+const TIPOS_SOLO_CALCULADORA = [
+  'Tubo redondo',
+  'Tubo cuadrado',
+  'Tubo rectangular',
+] as const;
+
+function esTipoSoloCalculadora(tipo: string): boolean {
+  return (TIPOS_SOLO_CALCULADORA as readonly string[]).includes(tipo);
+}
 
 function textoEstadoDrive(estado: Presupuesto['estadoDrive']): string {
   if (estado === 'tablet') return 'Guardado en tablet';
@@ -124,6 +136,9 @@ function App() {
   const [pesoTotalProducto, setPesoTotalProducto] = useState('');
   const [precioUnitarioProducto, setPrecioUnitarioProducto] = useState('');
   const [selectorProductoAbierto, setSelectorProductoAbierto] = useState(false);
+  const [metodoIngresoProducto, setMetodoIngresoProducto] =
+    useState<MetodoIngresoProducto>('proveedor');
+  const [calculadoraAbierta, setCalculadoraAbierta] = useState(false);
 
   const [clienteEditando, setClienteEditando] = useState(false);
   const [clienteDatosModificados, setClienteDatosModificados] = useState(false);
@@ -137,7 +152,13 @@ function App() {
   const descripcionProductoRef = useRef<HTMLTextAreaElement | null>(null);
 
   const tiposProducto = useMemo(
-    () => Array.from(new Set(PRODUCTOS_PROVEEDOR.map((producto) => producto.tipo))),
+    () =>
+      Array.from(
+        new Set([
+          ...PRODUCTOS_PROVEEDOR.map((producto) => producto.tipo),
+          ...TIPOS_SOLO_CALCULADORA,
+        ]),
+      ),
     [],
   );
 
@@ -266,6 +287,7 @@ function App() {
   function reiniciarFormularioProducto() {
     setTipoProductoSeleccionado('');
     setProductoProveedorId('');
+    setMetodoIngresoProducto('proveedor');
     setTipoCalculoProducto('peso');
     setDescripcionProducto('');
     setCantidadProducto('');
@@ -276,6 +298,7 @@ function App() {
     setPesoTotalProducto('');
     setPrecioUnitarioProducto('');
     setSelectorProductoAbierto(false);
+    setCalculadoraAbierta(false);
   }
 
   function manejarCambioTipoProducto(event: ChangeEvent<HTMLSelectElement>) {
@@ -284,15 +307,24 @@ function App() {
     setTipoProductoSeleccionado(tipo);
     setProductoProveedorId('');
     setTipoCalculoProducto('peso');
-    setDescripcionProducto('');
     setCantidadProducto('');
-    setLargoProducto('12,00');
+    setLargoProducto('');
     setAnchoProducto('');
     setEspesorProducto('');
     setMasaNominalProducto(null);
     setPesoTotalProducto('');
     setPrecioUnitarioProducto('');
     setMensaje('');
+
+    if (esTipoSoloCalculadora(tipo)) {
+      setMetodoIngresoProducto('calculadora');
+      setDescripcionProducto(tipo);
+      return;
+    }
+
+    setMetodoIngresoProducto('proveedor');
+    setDescripcionProducto('');
+    setLargoProducto('12,00');
   }
 
   function manejarCambioProducto(event: ChangeEvent<HTMLSelectElement>) {
@@ -301,6 +333,7 @@ function App() {
       (item) => item.id === productoId,
     );
 
+    setMetodoIngresoProducto('proveedor');
     setProductoProveedorId(productoId);
 
     if (!producto) {
@@ -341,6 +374,7 @@ function App() {
   }
 
   function abrirSelectorProducto() {
+    setCalculadoraAbierta(false);
     setSelectorProductoAbierto(true);
     setMensaje('');
   }
@@ -349,9 +383,81 @@ function App() {
     setSelectorProductoAbierto(false);
   }
 
+  function prepararIngresoPorCalculadora() {
+    const descripcionCalculadora = esTipoSoloCalculadora(
+      tipoProductoSeleccionado,
+    )
+      ? tipoProductoSeleccionado
+      : descripcionProducto;
+
+    setMetodoIngresoProducto('calculadora');
+    setProductoProveedorId('');
+    setTipoCalculoProducto('peso');
+    setDescripcionProducto(descripcionCalculadora);
+    setLargoProducto('');
+    setAnchoProducto('');
+    setEspesorProducto('');
+    setMasaNominalProducto(null);
+    setPesoTotalProducto('');
+    setSelectorProductoAbierto(false);
+    setMensaje(
+      esTipoSoloCalculadora(tipoProductoSeleccionado)
+        ? `${tipoProductoSeleccionado} se cotiza con la calculadora de metales. Cargá cantidad y precio unitario antes de abrirla.`
+        : 'Modo calculadora seleccionado. Cargá cantidad y precio unitario antes de abrirla.',
+    );
+  }
+
+  function abrirCalculadoraMetales() {
+    const cantidad = parsearEntero(cantidadProducto);
+    const precioUnitario = parsearNumeroDecimal(precioUnitarioProducto);
+
+    if (!Number.isInteger(cantidad) || cantidad <= 0) {
+      setMensaje(
+        'Antes de abrir la calculadora de metales, cargá una cantidad entera mayor que cero.',
+      );
+      return;
+    }
+
+    if (!Number.isFinite(precioUnitario) || precioUnitario <= 0) {
+      setMensaje(
+        'Antes de abrir la calculadora de metales, cargá el precio unitario USD/kg.',
+      );
+      return;
+    }
+
+    setMetodoIngresoProducto('calculadora');
+    setTipoCalculoProducto('peso');
+    setSelectorProductoAbierto(false);
+    setCalculadoraAbierta(true);
+    setMensaje('');
+  }
+
+  function aceptarPesoCalculado(pesoCalculado: number) {
+    if (!Number.isFinite(pesoCalculado) || pesoCalculado <= 0) {
+      setMensaje('La calculadora no devolvió un peso válido.');
+      return;
+    }
+
+    setMetodoIngresoProducto('calculadora');
+    setTipoCalculoProducto('peso');
+    setPesoTotalProducto(formatearDecimal4SinMiles(pesoCalculado));
+    setCalculadoraAbierta(false);
+    setMensaje('');
+    setAvisoModal('Peso total calculado.');
+
+    window.setTimeout(() => {
+      descripcionProductoRef.current?.focus();
+    }, 0);
+  }
+
   function confirmarSeleccionProducto() {
     if (!tipoProductoSeleccionado) {
       setMensaje('Seleccioná un tipo de producto.');
+      return;
+    }
+
+    if (esTipoSoloCalculadora(tipoProductoSeleccionado)) {
+      prepararIngresoPorCalculadora();
       return;
     }
 
@@ -368,6 +474,7 @@ function App() {
       return;
     }
 
+    setMetodoIngresoProducto('proveedor');
     setSelectorProductoAbierto(false);
     setMensaje('');
 
@@ -645,7 +752,10 @@ function App() {
     ).sort((a, b) => b.descripcion.length - a.descripcion.length)[0];
 
     const tipoCalculo = linea.tipoCalculo ?? coincidencia?.tipoCalculo ?? 'peso';
+    const metodoIngreso: MetodoIngresoProducto =
+      coincidencia || tipoCalculo !== 'peso' ? 'proveedor' : 'calculadora';
 
+    setMetodoIngresoProducto(metodoIngreso);
     setLineaEnEdicion(linea);
     setProductoFormVersion((version) => version + 1);
     setTipoCalculoProducto(tipoCalculo);
@@ -700,7 +810,9 @@ function App() {
         formatearDecimal4SinMiles(obtenerPesoTotalLinea(linea)),
       );
 
-      if (linea.largo && linea.largo > 0) {
+      if (metodoIngreso === 'calculadora') {
+        setLargoProducto('');
+      } else if (linea.largo && linea.largo > 0) {
         setLargoProducto(formatearDecimal2SinMiles(linea.largo));
       } else {
         const pesoTotal = obtenerPesoTotalLinea(linea);
@@ -748,12 +860,12 @@ function App() {
     const precioUnitario = parsearNumeroDecimal(precioUnitarioProducto);
     let pesoTotal = parsearNumeroDecimal(pesoTotalProducto);
 
-    if (!tipoProductoSeleccionado) {
+    if (metodoIngresoProducto === 'proveedor' && !tipoProductoSeleccionado) {
       setMensaje('Seleccioná un tipo de producto.');
       return;
     }
 
-    if (!productoProveedorId) {
+    if (metodoIngresoProducto === 'proveedor' && !productoProveedorId) {
       setMensaje('Seleccioná un producto de la tabla de proveedor.');
       return;
     }
@@ -773,28 +885,40 @@ function App() {
       return;
     }
 
-    if (!Number.isFinite(largo) || largo <= 0) {
-      setMensaje(
-        tipoCalculoProducto === 'plancha'
-          ? 'El largo en mm debe ser mayor que cero.'
-          : 'El largo en metros debe ser mayor que cero.',
-      );
-      return;
-    }
-
-    if (tipoCalculoProducto === 'peso') {
-      if (!masaNominalProducto || masaNominalProducto <= 0) {
-        setMensaje('El producto seleccionado no tiene masa nominal válida.');
-        return;
-      }
-
+    if (metodoIngresoProducto === 'calculadora') {
       if (!Number.isFinite(pesoTotal) || pesoTotal <= 0) {
-        setMensaje('El peso total debe ser mayor que cero.');
+        setMensaje(
+          'Calculá el peso total con la calculadora de metales antes de agregar el producto.',
+        );
         return;
+      }
+    } else {
+      if (!Number.isFinite(largo) || largo <= 0) {
+        setMensaje(
+          tipoCalculoProducto === 'plancha'
+            ? 'El largo en mm debe ser mayor que cero.'
+            : 'El largo en metros debe ser mayor que cero.',
+        );
+        return;
+      }
+
+      if (tipoCalculoProducto === 'peso') {
+        if (!masaNominalProducto || masaNominalProducto <= 0) {
+          setMensaje('El producto seleccionado no tiene masa nominal válida.');
+          return;
+        }
+
+        if (!Number.isFinite(pesoTotal) || pesoTotal <= 0) {
+          setMensaje('El peso total debe ser mayor que cero.');
+          return;
+        }
       }
     }
 
-    if (tipoCalculoProducto === 'plancha') {
+    if (
+      metodoIngresoProducto === 'proveedor' &&
+      tipoCalculoProducto === 'plancha'
+    ) {
       if (!Number.isFinite(ancho) || ancho <= 0) {
         setMensaje('El ancho en mm debe ser mayor que cero.');
         return;
@@ -813,21 +937,37 @@ function App() {
       }
     }
 
-    if (tipoCalculoProducto === 'metro') {
+    if (
+      metodoIngresoProducto === 'proveedor' &&
+      tipoCalculoProducto === 'metro'
+    ) {
       pesoTotal = 0;
     }
+
+    const tipoCalculoLinea: TipoCalculoLinea =
+      metodoIngresoProducto === 'calculadora' ? 'peso' : tipoCalculoProducto;
 
     const datosLinea = {
       descripcion,
       cantidad,
-      unidad: tipoCalculoProducto === 'metro' ? 'm' : 'kg',
+      unidad: tipoCalculoLinea === 'metro' ? 'm' : 'kg',
       precioUnitario,
       pesoTotal,
-      tipoCalculo: tipoCalculoProducto,
-      largo,
-      ancho: tipoCalculoProducto === 'plancha' ? ancho : undefined,
-      espesor: tipoCalculoProducto === 'plancha' ? espesor : undefined,
+      tipoCalculo: tipoCalculoLinea,
+      largo:
+        metodoIngresoProducto === 'calculadora' ? undefined : largo,
+      ancho:
+        metodoIngresoProducto === 'proveedor' &&
+        tipoCalculoProducto === 'plancha'
+          ? ancho
+          : undefined,
+      espesor:
+        metodoIngresoProducto === 'proveedor' &&
+        tipoCalculoProducto === 'plancha'
+          ? espesor
+          : undefined,
       masaNominal:
+        metodoIngresoProducto === 'proveedor' &&
         tipoCalculoProducto === 'peso'
           ? masaNominalProducto ?? undefined
           : undefined,
@@ -1123,38 +1263,57 @@ function App() {
           </select>
         </label>
 
-        <label
-          className="field-label product-full-field"
-          style={{ color: '#ffffff' }}
-        >
-          Producto
-          <select
-            className="text-input"
-            value={productoProveedorId}
-            onChange={manejarCambioProducto}
-            disabled={!tipoProductoSeleccionado}
+        {esTipoSoloCalculadora(tipoProductoSeleccionado) ? (
+          <div
+            className="product-full-field"
             style={{
-              background: '#111111',
-              color: tipoProductoSeleccionado ? '#ffffff' : '#808080',
-              WebkitTextFillColor: tipoProductoSeleccionado
-                ? '#ffffff'
-                : '#808080',
-              borderColor: '#555555',
-              opacity: 1,
+              color: '#ffffff',
+              border: '1px solid #555555',
+              borderRadius: '12px',
+              padding: '14px',
+              marginBottom: '12px',
             }}
           >
-            <option value="">
-              {tipoProductoSeleccionado
-                ? 'Seleccionar producto...'
-                : 'Primero seleccioná un tipo'}
-            </option>
-            {productosFiltrados.map((producto) => (
-              <option key={producto.id} value={producto.id}>
-                {producto.descripcion}
+            <strong>{tipoProductoSeleccionado}</strong>
+            <p style={{ margin: '8px 0 0', color: '#ffffff' }}>
+              Este producto no tiene subproductos en la tabla. Se cotiza
+              mediante la calculadora de metales.
+            </p>
+          </div>
+        ) : (
+          <label
+            className="field-label product-full-field"
+            style={{ color: '#ffffff' }}
+          >
+            Producto
+            <select
+              className="text-input"
+              value={productoProveedorId}
+              onChange={manejarCambioProducto}
+              disabled={!tipoProductoSeleccionado}
+              style={{
+                background: '#111111',
+                color: tipoProductoSeleccionado ? '#ffffff' : '#808080',
+                WebkitTextFillColor: tipoProductoSeleccionado
+                  ? '#ffffff'
+                  : '#808080',
+                borderColor: '#555555',
+                opacity: 1,
+              }}
+            >
+              <option value="">
+                {tipoProductoSeleccionado
+                  ? 'Seleccionar producto...'
+                  : 'Primero seleccioná un tipo'}
               </option>
-            ))}
-          </select>
-        </label>
+              {productosFiltrados.map((producto) => (
+                <option key={producto.id} value={producto.id}>
+                  {producto.descripcion}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         {tipoCalculoProducto === 'peso' &&
           masaNominalProducto !== null &&
@@ -1184,14 +1343,35 @@ function App() {
             type="button"
             className="primary-button"
             onClick={confirmarSeleccionProducto}
-            disabled={!productoProveedorId}
+            disabled={
+              !tipoProductoSeleccionado ||
+              (!esTipoSoloCalculadora(tipoProductoSeleccionado) &&
+                !productoProveedorId)
+            }
             style={{
-              color: productoProveedorId ? undefined : '#808080',
+              color:
+                tipoProductoSeleccionado &&
+                (esTipoSoloCalculadora(tipoProductoSeleccionado) ||
+                  productoProveedorId)
+                  ? undefined
+                  : '#808080',
               opacity: 1,
             }}
           >
-            Usar producto
+            {esTipoSoloCalculadora(tipoProductoSeleccionado)
+              ? 'Continuar con calculadora'
+              : 'Usar producto de tabla'}
           </button>
+
+          {!esTipoSoloCalculadora(tipoProductoSeleccionado) && (
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={prepararIngresoPorCalculadora}
+            >
+              Usar calculadora de metales
+            </button>
+          )}
 
           <button
             type="button"
@@ -1435,12 +1615,12 @@ function App() {
                 autoComplete="off"
                 value={descripcionProducto}
                 onFocus={() => {
-                  if (!productoProveedorId) {
+                  if (!descripcionProducto.trim()) {
                     abrirSelectorProducto();
                   }
                 }}
                 onChange={(event) => setDescripcionProducto(event.currentTarget.value)}
-                placeholder="Toque aquí para seleccionar un producto"
+                placeholder="Toque aquí para seleccionar un producto o usar la calculadora"
               />
             </label>
 
@@ -1450,11 +1630,86 @@ function App() {
                 className="secondary-button"
                 onClick={abrirSelectorProducto}
               >
-                {productoProveedorId ? 'Cambiar producto' : 'Seleccionar producto'}
+                {metodoIngresoProducto === 'calculadora'
+                  ? 'Cambiar método de ingreso'
+                  : productoProveedorId
+                    ? 'Cambiar producto'
+                    : 'Seleccionar producto'}
               </button>
             </div>
 
-            {tipoCalculoProducto === 'peso' && (
+            {metodoIngresoProducto === 'calculadora' && (
+              <>
+                <div className="product-two-column-grid">
+                  <label className="field-label">
+                    Cantidad
+                    <input
+                      name="cantidad"
+                      className="text-input product-number-input"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      autoComplete="off"
+                      placeholder="Entero"
+                      value={cantidadProducto}
+                      onChange={(event) =>
+                        setCantidadProducto(
+                          event.currentTarget.value.replace(/\D/g, ''),
+                        )
+                      }
+                    />
+                  </label>
+
+                  <label className="field-label">
+                    Precio unitario USD/kg
+                    <input
+                      name="precioUnitario"
+                      className="text-input product-number-input"
+                      inputMode="decimal"
+                      autoComplete="off"
+                      placeholder="0,0000"
+                      value={precioUnitarioProducto}
+                      onChange={manejarCambioPrecioUnitario}
+                      onBlur={completarPrecioUnitario}
+                    />
+                  </label>
+                </div>
+
+                <div className="product-form-actions">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={abrirCalculadoraMetales}
+                    disabled={
+                      !Number.isInteger(parsearEntero(cantidadProducto)) ||
+                      parsearEntero(cantidadProducto) <= 0 ||
+                      !Number.isFinite(
+                        parsearNumeroDecimal(precioUnitarioProducto),
+                      ) ||
+                      parsearNumeroDecimal(precioUnitarioProducto) <= 0
+                    }
+                  >
+                    Abrir calculadora de metales
+                  </button>
+                </div>
+
+                <label className="field-label product-full-field">
+                  Peso total (kg)
+                  <input
+                    name="pesoTotal"
+                    className="text-input product-number-input"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    placeholder="Se completa desde la calculadora"
+                    value={pesoTotalProducto}
+                    onChange={manejarCambioPesoTotal}
+                    onBlur={completarPesoTotalProducto}
+                  />
+                </label>
+              </>
+            )}
+
+            {metodoIngresoProducto === 'proveedor' &&
+              tipoCalculoProducto === 'peso' && (
               <>
                 <div className="product-two-column-grid">
                   <label className="field-label">
@@ -1532,7 +1787,8 @@ function App() {
               </>
             )}
 
-            {tipoCalculoProducto === 'metro' && (
+            {metodoIngresoProducto === 'proveedor' &&
+              tipoCalculoProducto === 'metro' && (
               <>
                 <div className="product-two-column-grid">
                   <label className="field-label">
@@ -1596,7 +1852,8 @@ function App() {
               </>
             )}
 
-            {tipoCalculoProducto === 'plancha' && (
+            {metodoIngresoProducto === 'proveedor' &&
+              tipoCalculoProducto === 'plancha' && (
               <>
                 <div className="product-two-column-grid">
                   <label className="field-label">
@@ -1710,6 +1967,30 @@ function App() {
             </div>
           </form>
 
+          <MetalWeightCalculatorModal
+            abierto={calculadoraAbierta}
+            cantidad={
+              Number.isInteger(parsearEntero(cantidadProducto))
+                ? parsearEntero(cantidadProducto)
+                : 0
+            }
+            precioUnitario={
+              Number.isFinite(parsearNumeroDecimal(precioUnitarioProducto))
+                ? parsearNumeroDecimal(precioUnitarioProducto)
+                : 0
+            }
+            formaInicial={
+              tipoProductoSeleccionado === 'Tubo redondo'
+                ? 'tubo-redondo'
+                : tipoProductoSeleccionado === 'Tubo cuadrado'
+                  ? 'tubo-cuadrado'
+                  : tipoProductoSeleccionado === 'Tubo rectangular'
+                    ? 'tubo-rectangular'
+                    : undefined
+            }
+            onAceptar={aceptarPesoCalculado}
+            onCerrar={() => setCalculadoraAbierta(false)}
+          />
 
           <div className="form-card">
             <h2>Productos cargados</h2>
