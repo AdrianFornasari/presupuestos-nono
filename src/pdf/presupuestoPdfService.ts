@@ -19,7 +19,7 @@ const PADDING_COLUMNA = 4;
 
 const ALTO_CABECERA_TABLA = 10;
 const ALTO_FILA_MINIMA = 12;
-const ALTO_FILA_TOTAL = 13;
+const ALTO_FILA_TOTAL = 20;
 
 const CAJA_LEGAL_X = 14;
 const CAJA_LEGAL_ANCHO = 182;
@@ -77,6 +77,29 @@ function obtenerTipoCalculoLinea(
 
 function formatearKilogramos(valor: number): string {
   return `${formatearImporteUSD(valor)} Kg`;
+}
+
+function parsearCotizacionUsd(valor: string): number {
+  const texto = valor.trim();
+
+  if (!texto) return Number.NaN;
+
+  const normalizado = texto
+    .replace(/\s/g, '')
+    .replace(/\./g, '')
+    .replace(',', '.')
+    .replace(/[^0-9.-]/g, '');
+
+  const numero = Number(normalizado);
+
+  return Number.isFinite(numero) && numero > 0 ? numero : Number.NaN;
+}
+
+function formatearImportePesos(valor: number): string {
+  return new Intl.NumberFormat('es-AR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(valor);
 }
 
 function formatearCantidadCotizada(linea: LineaPresupuesto): string {
@@ -356,8 +379,13 @@ function dibujarFilaTotales(
   y: number,
   totalKg: number,
   totalUsd: number,
+  cotizacionUsdAl: string,
 ): void {
   const divisionX = 105;
+  const cotizacion = parsearCotizacionUsd(cotizacionUsdAl);
+  const totalPesos = Number.isFinite(cotizacion)
+    ? totalUsd * cotizacion
+    : Number.NaN;
 
   doc.setFillColor(205, 205, 205);
   doc.setDrawColor(0, 0, 0);
@@ -373,13 +401,24 @@ function dibujarFilaTotales(
   doc.text(
     `Total de kg: ${formatearImporteUSD(totalKg)} Kg`,
     18,
-    y + 8,
+    y + 12,
   );
 
   doc.text(
     `Total U$S: ${formatearImporteUSD(totalUsd)}`,
     TABLA_DERECHA - 4,
-    y + 8,
+    y + 7,
+    {
+      align: 'right',
+    },
+  );
+
+  doc.text(
+    Number.isFinite(totalPesos)
+      ? `Total $: ${formatearImportePesos(totalPesos)}`
+      : 'Total $: -',
+    TABLA_DERECHA - 4,
+    y + 15,
     {
       align: 'right',
     },
@@ -554,7 +593,7 @@ export async function generarYGuardarPdfPresupuesto(
     y = iniciarPaginaDeDetalle(doc, presupuesto);
   }
 
-  dibujarFilaTotales(doc, y, totalKg, totalUsd);
+  dibujarFilaTotales(doc, y, totalKg, totalUsd, presupuesto.cotizacionUsdAl);
   agregarPieLegal(doc, presupuesto);
   agregarNumerosPagina(doc);
 
