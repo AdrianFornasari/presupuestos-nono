@@ -54,20 +54,9 @@ import {
   textoEstadoAlmacenamiento,
   type EstadoAlmacenamientoPersistente,
 } from './utils/persistentStorage';
-import {
-  actualizarEstadoSyncVisita,
-  crearVisitaCliente,
-  listarVisitasClientes,
-  listarVisitasParaSincronizar,
-} from './db/visitasClientesService';
-import {
-  enviarVisitaAGoogleSheets,
-  estaConfiguradaSincronizacionVisitas,
-} from './visitas/googleSheetsVisitasService';
-import type { VisitaCliente } from './types/visitaCliente';
 
-// BUILD: VISITAS-CLIENTES-V12-20260906 - formulario integrado offline-first
-type Pantalla = 'menu' | 'inicio' | 'editar' | 'configuracion' | 'visitas';
+// BUILD: PRODUCTOS-PROVEEDOR-V10-20260829 - recortes + ingreso manual de peso
+type Pantalla = 'inicio' | 'editar' | 'configuracion';
 type MetodoIngresoProducto = 'proveedor' | 'calculadora' | 'manual-peso';
 
 const TIPOS_SOLO_CALCULADORA = [
@@ -128,34 +117,8 @@ function normalizarTextoDecimal(valor: string, decimales: number): string {
   return `${parteEntera},${parteDecimal}`;
 }
 
-function obtenerFechaLocalIso(): string {
-  const ahora = new Date();
-  const anio = ahora.getFullYear();
-  const mes = String(ahora.getMonth() + 1).padStart(2, '0');
-  const dia = String(ahora.getDate()).padStart(2, '0');
-
-  return `${anio}-${mes}-${dia}`;
-}
-
-function formatearFechaVisita(fechaISO: string): string {
-  const [anio, mes, dia] = fechaISO.split('-');
-
-  if (!anio || !mes || !dia) return fechaISO;
-
-  return `${dia}/${mes}/${anio}`;
-}
-
-function textoEstadoSyncVisita(
-  estado: VisitaCliente['estadoSync'],
-): string {
-  if (estado === 'sincronizada') return 'Sincronizada';
-  if (estado === 'sincronizando') return 'Sincronizando...';
-  if (estado === 'error') return 'Error de sincronización';
-  return 'Pendiente';
-}
-
 function App() {
-  const [pantalla, setPantalla] = useState<Pantalla>('menu');
+  const [pantalla, setPantalla] = useState<Pantalla>('inicio');
   const [presupuestos, setPresupuestos] = useState<Presupuesto[]>([]);
   const [presupuestoActual, setPresupuestoActual] =
     useState<Presupuesto | null>(null);
@@ -186,14 +149,6 @@ function App() {
   const [metodoIngresoProducto, setMetodoIngresoProducto] =
     useState<MetodoIngresoProducto>('proveedor');
   const [calculadoraAbierta, setCalculadoraAbierta] = useState(false);
-
-  const [visitas, setVisitas] = useState<VisitaCliente[]>([]);
-  const [fechaVisita, setFechaVisita] = useState(obtenerFechaLocalIso());
-  const [clienteVisita, setClienteVisita] = useState('');
-  const [entrevistaVisita, setEntrevistaVisita] = useState('');
-  const [mensajeVisita, setMensajeVisita] = useState('');
-  const [guardandoVisita, setGuardandoVisita] = useState(false);
-  const [sincronizandoVisitas, setSincronizandoVisitas] = useState(false);
 
   const [clienteEditando, setClienteEditando] = useState(false);
   const [clienteDatosModificados, setClienteDatosModificados] = useState(false);
@@ -741,20 +696,6 @@ function App() {
       cancelado = true;
     };
   }, []);
-
-  useEffect(() => {
-    if (pantalla !== 'visitas') return;
-
-    function manejarConexionRestaurada() {
-      void sincronizarVisitasPendientes();
-    }
-
-    window.addEventListener('online', manejarConexionRestaurada);
-
-    return () => {
-      window.removeEventListener('online', manejarConexionRestaurada);
-    };
-  }, [pantalla, sincronizandoVisitas]);
 
   async function manejarNuevoPresupuesto() {
     const nuevo = await crearPresupuestoBorrador();
@@ -1307,144 +1248,6 @@ function App() {
     cargarPresupuestos();
   }
 
-  function volverMenuPrincipal() {
-    setPantalla('menu');
-    setPresupuestoActual(null);
-    setLineas([]);
-    setClienteEditando(false);
-    setClienteDatosModificados(false);
-    setLineaEnEdicion(null);
-    reiniciarFormularioProducto();
-    setMensaje('');
-    setAvisoModal('');
-  }
-
-  async function cargarVisitasClientes() {
-    const datos = await listarVisitasClientes();
-    setVisitas(datos);
-  }
-
-  async function sincronizarVisita(visita: VisitaCliente): Promise<boolean> {
-    try {
-      await actualizarEstadoSyncVisita(visita.id, 'sincronizando');
-      await cargarVisitasClientes();
-
-      await enviarVisitaAGoogleSheets(visita);
-
-      await actualizarEstadoSyncVisita(visita.id, 'sincronizada');
-      await cargarVisitasClientes();
-
-      return true;
-    } catch (error) {
-      const detalle =
-        error instanceof Error ? error.message : 'Error desconocido.';
-
-      await actualizarEstadoSyncVisita(visita.id, 'error', detalle);
-      await cargarVisitasClientes();
-
-      return false;
-    }
-  }
-
-  async function sincronizarVisitasPendientes() {
-    if (sincronizandoVisitas || !navigator.onLine) return;
-
-    if (!estaConfiguradaSincronizacionVisitas()) {
-      return;
-    }
-
-    setSincronizandoVisitas(true);
-
-    try {
-      const pendientes = await listarVisitasParaSincronizar();
-
-      for (const visita of pendientes) {
-        await sincronizarVisita(visita);
-      }
-    } finally {
-      setSincronizandoVisitas(false);
-      await cargarVisitasClientes();
-    }
-  }
-
-  async function abrirVisitasClientes() {
-    setPantalla('visitas');
-    setMensaje('');
-    setMensajeVisita('');
-    setFechaVisita(obtenerFechaLocalIso());
-
-    await cargarVisitasClientes();
-
-    if (navigator.onLine && estaConfiguradaSincronizacionVisitas()) {
-      void sincronizarVisitasPendientes();
-    }
-  }
-
-  async function guardarVisitaCliente(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    const cliente = clienteVisita.trim();
-    const entrevista = entrevistaVisita.trim();
-
-    if (!fechaVisita) {
-      setMensajeVisita('Seleccioná la fecha de la visita.');
-      return;
-    }
-
-    if (!cliente) {
-      setMensajeVisita('Ingresá el cliente o potencial cliente.');
-      return;
-    }
-
-    if (!entrevista) {
-      setMensajeVisita('Ingresá el resumen de la entrevista.');
-      return;
-    }
-
-    setGuardandoVisita(true);
-    setMensajeVisita('');
-
-    try {
-      const visita = await crearVisitaCliente({
-        fecha: fechaVisita,
-        cliente,
-        entrevista,
-      });
-
-      await cargarVisitasClientes();
-
-      setFechaVisita(obtenerFechaLocalIso());
-      setClienteVisita('');
-      setEntrevistaVisita('');
-
-      if (!estaConfiguradaSincronizacionVisitas()) {
-        setMensajeVisita(
-          'Visita guardada en la tablet. Falta configurar Google Apps Script para sincronizarla.',
-        );
-        return;
-      }
-
-      if (!navigator.onLine) {
-        setMensajeVisita(
-          'Visita guardada en la tablet. Se sincronizará cuando vuelva Internet.',
-        );
-        return;
-      }
-
-      setMensajeVisita('Visita guardada. Sincronizando con Google Sheets...');
-
-      const sincronizada = await sincronizarVisita(visita);
-
-      setMensajeVisita(
-        sincronizada
-          ? 'Visita guardada y sincronizada con Google Sheets.'
-          : 'Visita guardada en la tablet. La sincronización quedó pendiente.',
-      );
-    } finally {
-      setGuardandoVisita(false);
-    }
-  }
-
   function cerrarAvisoModal() {
     setAvisoModal('');
   }
@@ -1668,210 +1471,6 @@ function App() {
       </div>
     </div>
   ) : null;
-
-  if (pantalla === 'menu') {
-    return (
-      <main className="app-shell" translate="no">
-        {estilosGlobalesElemento}
-
-        <section className="home-card">
-          <div className="app-header">
-            <h1>Carlos Centeno Aceros</h1>
-          </div>
-
-          <div className="main-actions">
-            <button
-              type="button"
-              className="primary-button"
-              onClick={() => {
-                setPantalla('inicio');
-                setMensaje('');
-                void cargarPresupuestos();
-              }}
-            >
-              Presupuestos
-            </button>
-
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={abrirVisitasClientes}
-            >
-              Visitas a clientes
-            </button>
-          </div>
-        </section>
-      </main>
-    );
-  }
-
-  if (pantalla === 'visitas') {
-    return (
-      <main className="app-shell" translate="no">
-        {estilosGlobalesElemento}
-
-        <section className="screen-card">
-          <div className="top-actions-row">
-            <button
-              type="button"
-              className="back-button"
-              onClick={volverMenuPrincipal}
-            >
-              Volver
-            </button>
-
-            <div className="storage-status storage-status-inline">
-              <span className="status-dot" />
-              <span>
-                {navigator.onLine ? 'Con conexión' : 'Sin conexión'}
-              </span>
-            </div>
-          </div>
-
-          <div className="app-header app-header-compact">
-            <p className="eyebrow">Carlos Centeno Aceros</p>
-            <h1>Visitas a clientes</h1>
-          </div>
-
-          {mensajeVisita && (
-            <div className="message-box">{mensajeVisita}</div>
-          )}
-
-          <form className="form-card" onSubmit={guardarVisitaCliente}>
-            <h2>Nueva visita</h2>
-
-            <label className="field-label">
-              Fecha de visita
-              <input
-                type="date"
-                className="text-input"
-                value={fechaVisita}
-                onChange={(event) =>
-                  setFechaVisita(event.currentTarget.value)
-                }
-              />
-            </label>
-
-            <label className="field-label">
-              Cliente / potencial cliente
-              <input
-                className="text-input"
-                autoComplete="off"
-                value={clienteVisita}
-                onChange={(event) =>
-                  setClienteVisita(event.currentTarget.value)
-                }
-                placeholder="Nombre del cliente"
-              />
-            </label>
-
-            <label className="field-label">
-              Entrevista
-              <textarea
-                className="text-area"
-                rows={8}
-                value={entrevistaVisita}
-                onChange={(event) =>
-                  setEntrevistaVisita(event.currentTarget.value)
-                }
-                placeholder="Resumen de la entrevista..."
-              />
-            </label>
-
-            <button
-              type="submit"
-              className="primary-button"
-              disabled={guardandoVisita}
-            >
-              {guardandoVisita ? 'Guardando...' : 'Guardar visita'}
-            </button>
-          </form>
-
-          <div className="form-card">
-            <div className="client-summary-row">
-              <div className="client-summary-name">
-                <span>Historial</span>
-                <strong>Últimas visitas</strong>
-              </div>
-
-              <button
-                type="button"
-                className="secondary-button compact-edit-button"
-                onClick={() => void sincronizarVisitasPendientes()}
-                disabled={
-                  sincronizandoVisitas ||
-                  !navigator.onLine ||
-                  !estaConfiguradaSincronizacionVisitas()
-                }
-              >
-                {sincronizandoVisitas
-                  ? 'Sincronizando...'
-                  : 'Sincronizar pendientes'}
-              </button>
-            </div>
-
-            {!estaConfiguradaSincronizacionVisitas() && (
-              <p className="empty-text">
-                Google Sheets todavía no está configurado. Las visitas se
-                guardarán localmente hasta completar la configuración.
-              </p>
-            )}
-
-            {visitas.length === 0 ? (
-              <p className="empty-text">
-                Todavía no hay visitas cargadas.
-              </p>
-            ) : (
-              <div className="line-list">
-                {visitas.map((visita) => (
-                  <article key={visita.id} className="product-card">
-                    <div className="product-card-title">
-                      <span className="product-card-title-text">
-                        <strong>{visita.cliente}</strong>
-                      </span>
-                    </div>
-
-                    <div className="product-card-left-values">
-                      <span>
-                        Fecha:{' '}
-                        <strong>
-                          {formatearFechaVisita(visita.fecha)}
-                        </strong>
-                      </span>
-
-                      <span>
-                        Estado:{' '}
-                        <strong>
-                          {textoEstadoSyncVisita(visita.estadoSync)}
-                        </strong>
-                      </span>
-                    </div>
-
-                    <div
-                      style={{
-                        whiteSpace: 'pre-wrap',
-                        overflowWrap: 'anywhere',
-                        lineHeight: 1.45,
-                      }}
-                    >
-                      {visita.entrevista}
-                    </div>
-
-                    {visita.estadoSync === 'error' &&
-                      visita.ultimoError && (
-                        <p className="empty-text">
-                          {visita.ultimoError}
-                        </p>
-                      )}
-                  </article>
-                ))}
-              </div>
-            )}
-          </div>
-        </section>
-      </main>
-    );
-  }
 
   if (pantalla === 'configuracion') {
     return (
@@ -2660,19 +2259,9 @@ function App() {
       {estilosGlobalesElemento}
 
       <section className="home-card">
-        <div className="top-actions-row">
-          <button
-            type="button"
-            className="back-button"
-            onClick={volverMenuPrincipal}
-          >
-            Volver
-          </button>
-
-          <div className="storage-status storage-status-inline">
-            <span className="status-dot" />
-            <span>Guardado en tablet</span>
-          </div>
+        <div className="storage-status">
+          <span className="status-dot" />
+          <span>Guardado en tablet</span>
         </div>
 
         <div className="app-header">

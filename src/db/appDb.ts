@@ -5,12 +5,14 @@ import type {
   PdfPresupuesto,
   Presupuesto,
 } from '../types/presupuesto';
+import type { VisitaCliente } from '../types/visitaCliente';
 
 class PresupuestosNonoDb extends Dexie {
   presupuestos!: Table<Presupuesto, string>;
   lineasPresupuesto!: Table<LineaPresupuesto, string>;
   pdfsPresupuesto!: Table<PdfPresupuesto, string>;
   configuracion!: Table<ConfiguracionApp, string>;
+  visitasClientes!: Table<VisitaCliente, string>;
 
   constructor() {
     super('presupuestos-nono-db');
@@ -31,6 +33,18 @@ class PresupuestosNonoDb extends Dexie {
       pdfsPresupuesto:
         'id, presupuestoId, version, nombreArchivo, creadoEn',
       configuracion: 'id',
+    });
+
+    this.version(3).stores({
+      presupuestos:
+        'id, numero, numeroFormateado, fechaEmision, clienteNombre, estado, estadoDrive, actualizadoEn',
+      lineasPresupuesto:
+        'id, presupuestoId, orden, descripcion, actualizadoEn',
+      pdfsPresupuesto:
+        'id, presupuestoId, version, nombreArchivo, creadoEn',
+      configuracion: 'id',
+      visitasClientes:
+        'id, fecha, cliente, estadoSync, creadoEn, actualizadoEn',
     });
   }
 }
