@@ -66,7 +66,7 @@ import {
 } from './visitas/googleSheetsVisitasService';
 import type { VisitaCliente } from './types/visitaCliente';
 
-// BUILD: VISITAS-CLIENTES-V12-20260906 - formulario integrado offline-first
+// BUILD: VISITAS-CLIENTES-V12.4-20260906 - corrige layout tarjetas de visitas
 type Pantalla = 'menu' | 'inicio' | 'editar' | 'configuracion' | 'visitas';
 type MetodoIngresoProducto = 'proveedor' | 'calculadora' | 'manual-peso';
 
@@ -145,6 +145,39 @@ function formatearFechaVisita(fechaISO: string): string {
   return `${dia}/${mes}/${anio}`;
 }
 
+function normalizarFechaVisual(valor: string): string {
+  const digitos = valor.replace(/\D/g, '').slice(0, 8);
+
+  if (digitos.length <= 2) return digitos;
+  if (digitos.length <= 4) {
+    return `${digitos.slice(0, 2)}/${digitos.slice(2)}`;
+  }
+
+  return `${digitos.slice(0, 2)}/${digitos.slice(2, 4)}/${digitos.slice(4)}`;
+}
+
+function convertirFechaVisualAIso(valor: string): string | null {
+  const coincidencia = valor.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+
+  if (!coincidencia) return null;
+
+  const dia = Number(coincidencia[1]);
+  const mes = Number(coincidencia[2]);
+  const anio = Number(coincidencia[3]);
+
+  const fecha = new Date(anio, mes - 1, dia);
+
+  if (
+    fecha.getFullYear() !== anio ||
+    fecha.getMonth() !== mes - 1 ||
+    fecha.getDate() !== dia
+  ) {
+    return null;
+  }
+
+  return `${String(anio).padStart(4, '0')}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+}
+
 function textoEstadoSyncVisita(
   estado: VisitaCliente['estadoSync'],
 ): string {
@@ -188,7 +221,9 @@ function App() {
   const [calculadoraAbierta, setCalculadoraAbierta] = useState(false);
 
   const [visitas, setVisitas] = useState<VisitaCliente[]>([]);
-  const [fechaVisita, setFechaVisita] = useState(obtenerFechaLocalIso());
+  const [fechaVisita, setFechaVisita] = useState(
+    formatearFechaVisita(obtenerFechaLocalIso()),
+  );
   const [clienteVisita, setClienteVisita] = useState('');
   const [entrevistaVisita, setEntrevistaVisita] = useState('');
   const [mensajeVisita, setMensajeVisita] = useState('');
@@ -1371,7 +1406,7 @@ function App() {
     setPantalla('visitas');
     setMensaje('');
     setMensajeVisita('');
-    setFechaVisita(obtenerFechaLocalIso());
+    setFechaVisita(formatearFechaVisita(obtenerFechaLocalIso()));
 
     await cargarVisitasClientes();
 
@@ -1386,8 +1421,10 @@ function App() {
     const cliente = clienteVisita.trim();
     const entrevista = entrevistaVisita.trim();
 
-    if (!fechaVisita) {
-      setMensajeVisita('Seleccioná la fecha de la visita.');
+    const fechaIso = convertirFechaVisualAIso(fechaVisita);
+
+    if (!fechaIso) {
+      setMensajeVisita('Ingresá una fecha válida en formato dd/mm/yyyy.');
       return;
     }
 
@@ -1406,14 +1443,14 @@ function App() {
 
     try {
       const visita = await crearVisitaCliente({
-        fecha: fechaVisita,
+        fecha: fechaIso,
         cliente,
         entrevista,
       });
 
       await cargarVisitasClientes();
 
-      setFechaVisita(obtenerFechaLocalIso());
+      setFechaVisita(formatearFechaVisita(obtenerFechaLocalIso()));
       setClienteVisita('');
       setEntrevistaVisita('');
 
@@ -1475,6 +1512,44 @@ function App() {
       button:disabled {
         color: #808080 !important;
         opacity: 1 !important;
+      }
+
+      .visit-card {
+        display: block !important;
+        width: 100%;
+      }
+
+      .visit-card-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+        gap: 24px;
+        width: 100%;
+        align-items: start;
+      }
+
+      .visit-card-meta {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .visit-card-client {
+        overflow-wrap: anywhere;
+      }
+
+      .visit-card-interview {
+        min-width: 0;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        line-height: 1.45;
+      }
+
+      @media (max-width: 700px) {
+        .visit-card-layout {
+          grid-template-columns: 1fr;
+          gap: 14px;
+        }
       }
     `}</style>
   );
@@ -1743,11 +1818,17 @@ function App() {
             <label className="field-label">
               Fecha de visita
               <input
-                type="date"
+                type="text"
                 className="text-input"
+                inputMode="numeric"
+                autoComplete="off"
+                placeholder="dd/mm/yyyy"
+                maxLength={10}
                 value={fechaVisita}
                 onChange={(event) =>
-                  setFechaVisita(event.currentTarget.value)
+                  setFechaVisita(
+                    normalizarFechaVisual(event.currentTarget.value),
+                  )
                 }
               />
             </label>
@@ -1824,45 +1905,42 @@ function App() {
             ) : (
               <div className="line-list">
                 {visitas.map((visita) => (
-                  <article key={visita.id} className="product-card">
-                    <div className="product-card-title">
-                      <span className="product-card-title-text">
-                        <strong>{visita.cliente}</strong>
-                      </span>
-                    </div>
-
-                    <div className="product-card-left-values">
-                      <span>
-                        Fecha:{' '}
-                        <strong>
-                          {formatearFechaVisita(visita.fecha)}
+                  <article
+                    key={visita.id}
+                    className="product-card visit-card"
+                  >
+                    <div className="visit-card-layout">
+                      <div className="visit-card-meta">
+                        <strong className="visit-card-client">
+                          {visita.cliente}
                         </strong>
-                      </span>
 
-                      <span>
-                        Estado:{' '}
-                        <strong>
-                          {textoEstadoSyncVisita(visita.estadoSync)}
-                        </strong>
-                      </span>
+                        <span>
+                          Fecha:{' '}
+                          <strong>
+                            {formatearFechaVisita(visita.fecha)}
+                          </strong>
+                        </span>
+
+                        <span>
+                          Estado:{' '}
+                          <strong>
+                            {textoEstadoSyncVisita(visita.estadoSync)}
+                          </strong>
+                        </span>
+
+                        {visita.estadoSync === 'error' &&
+                          visita.ultimoError && (
+                            <span className="empty-text">
+                              {visita.ultimoError}
+                            </span>
+                          )}
+                      </div>
+
+                      <div className="visit-card-interview">
+                        {visita.entrevista}
+                      </div>
                     </div>
-
-                    <div
-                      style={{
-                        whiteSpace: 'pre-wrap',
-                        overflowWrap: 'anywhere',
-                        lineHeight: 1.45,
-                      }}
-                    >
-                      {visita.entrevista}
-                    </div>
-
-                    {visita.estadoSync === 'error' &&
-                      visita.ultimoError && (
-                        <p className="empty-text">
-                          {visita.ultimoError}
-                        </p>
-                      )}
                   </article>
                 ))}
               </div>
@@ -1993,7 +2071,7 @@ function App() {
             <p className="eyebrow">Presupuesto</p>
             <h1>{presupuestoActual.numeroFormateado}</h1>
             <p className="subtitle">
-              Fecha: {presupuestoActual.fechaEmision}
+              Fecha: {formatearFechaLista(presupuestoActual.fechaEmision)}
             </p>
           </div>
 
