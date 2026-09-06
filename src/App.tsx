@@ -66,7 +66,7 @@ import {
 } from './visitas/googleSheetsVisitasService';
 import type { VisitaCliente } from './types/visitaCliente';
 
-// BUILD: VISITAS-CLIENTES-V12.4-20260906 - corrige layout tarjetas de visitas
+// BUILD: VISITAS-CLIENTES-V12.5-20260906 - historial compacto + modal de entrevista
 type Pantalla = 'menu' | 'inicio' | 'editar' | 'configuracion' | 'visitas';
 type MetodoIngresoProducto = 'proveedor' | 'calculadora' | 'manual-peso';
 
@@ -229,6 +229,8 @@ function App() {
   const [mensajeVisita, setMensajeVisita] = useState('');
   const [guardandoVisita, setGuardandoVisita] = useState(false);
   const [sincronizandoVisitas, setSincronizandoVisitas] = useState(false);
+  const [visitaSeleccionada, setVisitaSeleccionada] =
+    useState<VisitaCliente | null>(null);
 
   const [clienteEditando, setClienteEditando] = useState(false);
   const [clienteDatosModificados, setClienteDatosModificados] = useState(false);
@@ -1482,6 +1484,22 @@ function App() {
     }
   }
 
+  function abrirDetalleVisita(visita: VisitaCliente) {
+    setVisitaSeleccionada(visita);
+  }
+
+  function cerrarDetalleVisita() {
+    setVisitaSeleccionada(null);
+  }
+
+  function cerrarDetalleVisitaConTeclado(
+    event: KeyboardEvent<HTMLDivElement>,
+  ) {
+    if (event.key === 'Escape') {
+      setVisitaSeleccionada(null);
+    }
+  }
+
   function cerrarAvisoModal() {
     setAvisoModal('');
   }
@@ -1517,42 +1535,152 @@ function App() {
       .visit-card {
         display: block !important;
         width: 100%;
+        cursor: pointer;
       }
 
-      .visit-card-layout {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
-        gap: 24px;
-        width: 100%;
-        align-items: start;
+      .visit-card:focus-visible {
+        outline: 3px solid currentColor;
+        outline-offset: 3px;
       }
 
-      .visit-card-meta {
+      .visit-card-row {
+        margin: 0 0 8px;
         min-width: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-      }
-
-      .visit-card-client {
         overflow-wrap: anywhere;
       }
 
-      .visit-card-interview {
-        min-width: 0;
+      .visit-card-row:last-child {
+        margin-bottom: 0;
+      }
+
+      .visit-card-summary {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
+        overflow: hidden;
+        line-clamp: 3;
+        white-space: pre-wrap;
+        line-height: 1.45;
+        max-height: calc(1.45em * 3);
+      }
+
+      .visit-detail-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 18px;
+        background: rgba(0, 0, 0, 0.72);
+      }
+
+      .visit-detail-modal {
+        width: min(92vw, 760px);
+        max-height: 86vh;
+        overflow-y: auto;
+        background: #111111;
+        color: #ffffff;
+        border: 2px solid #ffffff;
+        border-radius: 18px;
+        padding: 20px;
+        box-sizing: border-box;
+      }
+
+      .visit-detail-modal h2 {
+        margin-top: 0;
+      }
+
+      .visit-detail-interview {
         white-space: pre-wrap;
         overflow-wrap: anywhere;
-        line-height: 1.45;
+        line-height: 1.5;
+        margin: 18px 0;
       }
 
-      @media (max-width: 700px) {
-        .visit-card-layout {
-          grid-template-columns: 1fr;
-          gap: 14px;
+      .visit-detail-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 18px;
+      }
+
+      @media (max-width: 520px) {
+        .visit-detail-backdrop {
+          padding: 10px;
+        }
+
+        .visit-detail-modal {
+          width: 100%;
+          max-height: 88vh;
+          padding: 16px;
+        }
+
+        .visit-detail-actions .secondary-button {
+          width: 100%;
         }
       }
     `}</style>
   );
+
+  const detalleVisitaModalElemento = visitaSeleccionada ? (
+    <div
+      className="visit-detail-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          cerrarDetalleVisita();
+        }
+      }}
+      onKeyDown={cerrarDetalleVisitaConTeclado}
+    >
+      <div
+        className="visit-detail-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="detalle-visita-titulo"
+        tabIndex={-1}
+      >
+        <h2 id="detalle-visita-titulo">Detalle de la visita</h2>
+
+        <p>
+          <strong>Fecha:</strong>{' '}
+          {formatearFechaVisita(visitaSeleccionada.fecha)}
+        </p>
+
+        <p>
+          <strong>Cliente:</strong> {visitaSeleccionada.cliente}
+        </p>
+
+        <div className="visit-detail-interview">
+          <strong>Resumen visita:</strong>{' '}
+          {visitaSeleccionada.entrevista}
+        </div>
+
+        <p>
+          <strong>Estado:</strong>{' '}
+          {textoEstadoSyncVisita(visitaSeleccionada.estadoSync)}
+        </p>
+
+        {visitaSeleccionada.estadoSync === 'error' &&
+          visitaSeleccionada.ultimoError && (
+            <p className="empty-text">
+              {visitaSeleccionada.ultimoError}
+            </p>
+          )}
+
+        <div className="visit-detail-actions">
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={cerrarDetalleVisita}
+            autoFocus
+          >
+            Volver
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
 
   const selectorProductoModalElemento = selectorProductoAbierto ? (
     <div
@@ -1784,6 +1912,7 @@ function App() {
     return (
       <main className="app-shell" translate="no">
         {estilosGlobalesElemento}
+        {detalleVisitaModalElemento}
 
         <section className="screen-card">
           <div className="top-actions-row">
@@ -1908,39 +2037,30 @@ function App() {
                   <article
                     key={visita.id}
                     className="product-card visit-card"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Abrir visita de ${visita.cliente}`}
+                    onClick={() => abrirDetalleVisita(visita)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        abrirDetalleVisita(visita);
+                      }
+                    }}
                   >
-                    <div className="visit-card-layout">
-                      <div className="visit-card-meta">
-                        <strong className="visit-card-client">
-                          {visita.cliente}
-                        </strong>
+                    <p className="visit-card-row">
+                      <strong>Fecha:</strong>{' '}
+                      {formatearFechaVisita(visita.fecha)}
+                    </p>
 
-                        <span>
-                          Fecha:{' '}
-                          <strong>
-                            {formatearFechaVisita(visita.fecha)}
-                          </strong>
-                        </span>
+                    <p className="visit-card-row">
+                      <strong>Cliente:</strong> {visita.cliente}
+                    </p>
 
-                        <span>
-                          Estado:{' '}
-                          <strong>
-                            {textoEstadoSyncVisita(visita.estadoSync)}
-                          </strong>
-                        </span>
-
-                        {visita.estadoSync === 'error' &&
-                          visita.ultimoError && (
-                            <span className="empty-text">
-                              {visita.ultimoError}
-                            </span>
-                          )}
-                      </div>
-
-                      <div className="visit-card-interview">
-                        {visita.entrevista}
-                      </div>
-                    </div>
+                    <p className="visit-card-row visit-card-summary">
+                      <strong>Resumen visita:</strong>{' '}
+                      {visita.entrevista}
+                    </p>
                   </article>
                 ))}
               </div>
