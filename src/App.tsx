@@ -65,9 +65,17 @@ import {
   estaConfiguradaSincronizacionVisitas,
 } from './visitas/googleSheetsVisitasService';
 import type { VisitaCliente } from './types/visitaCliente';
+import VoiceCapturePanel from './voice/components/VoiceCapturePanel';
+import { BrowserSpeechProvider } from './voice/providers/BrowserSpeechProvider';
+import {
+  evaluarTranscripcionVoz,
+  registrarTranscripcionVoz,
+} from './db/voiceTranscriptionsService';
+import type { VoiceTranscriptionEvaluation } from './voice/types/voice';
 
-// BUILD: VISITAS-CLIENTES-V12.5-20260906 - historial compacto + modal de entrevista
+// BUILD: VOZ-ETAPA1-V13-20260910 - micrófono a texto sin interpretación
 type Pantalla = 'menu' | 'inicio' | 'editar' | 'configuracion' | 'visitas';
+type ModoPresupuesto = 'manual' | 'voz';
 type MetodoIngresoProducto = 'proveedor' | 'calculadora' | 'manual-peso';
 
 const TIPOS_SOLO_CALCULADORA = [
@@ -189,6 +197,12 @@ function textoEstadoSyncVisita(
 
 function App() {
   const [pantalla, setPantalla] = useState<Pantalla>('menu');
+  const [modoPresupuesto, setModoPresupuesto] =
+    useState<ModoPresupuesto>('manual');
+  const speechProvider = useMemo(
+    () => new BrowserSpeechProvider(),
+    [],
+  );
   const [presupuestos, setPresupuestos] = useState<Presupuesto[]>([]);
   const [presupuestoActual, setPresupuestoActual] =
     useState<Presupuesto | null>(null);
@@ -262,6 +276,50 @@ function App() {
       ),
     [tipoProductoSeleccionado],
   );
+
+  async function registrarTranscripcionExperimental(
+    text: string,
+    presupuestoId?: string,
+  ): Promise<string | undefined> {
+    try {
+      const registro = await registrarTranscripcionVoz(
+        text,
+        presupuestoId,
+      );
+
+      return registro.id;
+    } catch (error) {
+      const detalle =
+        error instanceof Error ? error.message : 'Error desconocido.';
+
+      setMensaje(
+        `La transcripción se obtuvo correctamente, pero no pudo guardarse en el registro experimental. ${detalle}`,
+      );
+
+      return undefined;
+    }
+  }
+
+  async function guardarEvaluacionTranscripcion(
+    logId: string,
+    evaluation: VoiceTranscriptionEvaluation,
+    expectedText?: string,
+  ): Promise<void> {
+    try {
+      await evaluarTranscripcionVoz(
+        logId,
+        evaluation,
+        expectedText,
+      );
+    } catch (error) {
+      const detalle =
+        error instanceof Error ? error.message : 'Error desconocido.';
+
+      setMensaje(
+        `No se pudo guardar la evaluación de la transcripción. ${detalle}`,
+      );
+    }
+  }
 
   async function cargarPresupuestos() {
     const datos = await listarPresupuestos();
@@ -1345,6 +1403,7 @@ function App() {
   }
 
   function volverMenuPrincipal() {
+    setModoPresupuesto('manual');
     setPantalla('menu');
     setPresupuestoActual(null);
     setLineas([]);
@@ -1887,12 +1946,26 @@ function App() {
               type="button"
               className="primary-button"
               onClick={() => {
+                setModoPresupuesto('manual');
                 setPantalla('inicio');
                 setMensaje('');
                 void cargarPresupuestos();
               }}
             >
               Presupuestos
+            </button>
+
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => {
+                setModoPresupuesto('voz');
+                setPantalla('inicio');
+                setMensaje('');
+                void cargarPresupuestos();
+              }}
+            >
+              🎤 Presupuesto por voz
             </button>
 
             <button
@@ -2188,7 +2261,11 @@ function App() {
           </div>
 
           <div className="app-header app-header-compact">
-            <p className="eyebrow">Presupuesto</p>
+            <p className="eyebrow">
+              {modoPresupuesto === 'voz'
+                ? 'Presupuesto por voz · Experimental'
+                : 'Presupuesto'}
+            </p>
             <h1>{presupuestoActual.numeroFormateado}</h1>
             <p className="subtitle">
               Fecha: {formatearFechaLista(presupuestoActual.fechaEmision)}
@@ -2282,6 +2359,15 @@ function App() {
               </form>
             )}
           </div>
+
+          {modoPresupuesto === 'voz' && (
+            <VoiceCapturePanel
+              provider={speechProvider}
+              presupuestoId={presupuestoActual.id}
+              onTranscriptionFinal={registrarTranscripcionExperimental}
+              onEvaluation={guardarEvaluacionTranscripcion}
+            />
+          )}
 
           <form
             key={`producto-${lineaEnEdicion?.id ?? 'nuevo'}-${productoFormVersion}`}
@@ -2874,7 +2960,20 @@ function App() {
         </div>
 
         <div className="app-header">
-          <h1>Presupuestos</h1>
+          {modoPresupuesto === 'voz' && (
+            <p className="eyebrow">Experimental</p>
+          )}
+          <h1>
+            {modoPresupuesto === 'voz'
+              ? 'Presupuesto por voz'
+              : 'Presupuestos'}
+          </h1>
+          {modoPresupuesto === 'voz' && (
+            <p className="subtitle">
+              El flujo de presupuesto es el mismo. En esta etapa el micrófono
+              sólo transcribe y no agrega productos automáticamente.
+            </p>
+          )}
         </div>
 
         {mensaje && <div className="message-box">{mensaje}</div>}
@@ -2885,7 +2984,9 @@ function App() {
             className="primary-button"
             onClick={manejarNuevoPresupuesto}
           >
-            Nuevo presupuesto
+            {modoPresupuesto === 'voz'
+              ? 'Nuevo presupuesto por voz'
+              : 'Nuevo presupuesto'}
           </button>
 
           <button type="button" className="secondary-button">
