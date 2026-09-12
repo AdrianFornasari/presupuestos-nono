@@ -4,11 +4,12 @@ import {
   useRef,
   useState,
   type ChangeEvent,
-  type FocusEvent,
   type FormEvent,
   type KeyboardEvent,
 } from 'react';
-import MetalWeightCalculatorModal from './components/MetalWeightCalculatorModal';
+import MetalWeightCalculatorModal, {
+  type ResultadoCalculoMetal,
+} from './components/MetalWeightCalculatorModal';
 import {
   crearBackupJson,
   descargarBackup,
@@ -73,10 +74,14 @@ import {
 } from './db/voiceTranscriptionsService';
 import type { VoiceTranscriptionEvaluation } from './voice/types/voice';
 
-// BUILD: VOZ-ETAPA1-V13-20260910 - micrófono a texto sin interpretación
+// BUILD: AJUSTES-MALLAS-PDF-V14-20260912
 type Pantalla = 'menu' | 'inicio' | 'editar' | 'configuracion' | 'visitas';
 type ModoPresupuesto = 'manual' | 'voz';
-type MetodoIngresoProducto = 'proveedor' | 'calculadora' | 'manual-peso';
+type MetodoIngresoProducto =
+  | 'proveedor'
+  | 'calculadora'
+  | 'manual-peso'
+  | 'manual-unidad';
 
 const TIPOS_SOLO_CALCULADORA = [
   'Tubo redondo',
@@ -85,6 +90,7 @@ const TIPOS_SOLO_CALCULADORA = [
 ] as const;
 
 const TIPOS_SOLO_PESO_MANUAL = ['Recortes'] as const;
+const TIPOS_SOLO_UNIDAD = ['Mallas'] as const;
 
 function esTipoSoloCalculadora(tipo: string): boolean {
   return (TIPOS_SOLO_CALCULADORA as readonly string[]).includes(tipo);
@@ -94,8 +100,16 @@ function esTipoSoloPesoManual(tipo: string): boolean {
   return (TIPOS_SOLO_PESO_MANUAL as readonly string[]).includes(tipo);
 }
 
+function esTipoSoloUnidad(tipo: string): boolean {
+  return (TIPOS_SOLO_UNIDAD as readonly string[]).includes(tipo);
+}
+
 function esTipoSinSubproducto(tipo: string): boolean {
-  return esTipoSoloCalculadora(tipo) || esTipoSoloPesoManual(tipo);
+  return (
+    esTipoSoloCalculadora(tipo) ||
+    esTipoSoloPesoManual(tipo) ||
+    esTipoSoloUnidad(tipo)
+  );
 }
 
 function textoEstadoDrive(estado: Presupuesto['estadoDrive']): string {
@@ -264,6 +278,7 @@ function App() {
           ...PRODUCTOS_PROVEEDOR.map((producto) => producto.tipo),
           ...TIPOS_SOLO_CALCULADORA,
           ...TIPOS_SOLO_PESO_MANUAL,
+          ...TIPOS_SOLO_UNIDAD,
         ]),
       ),
     [],
@@ -480,6 +495,14 @@ function App() {
       return;
     }
 
+    if (esTipoSoloUnidad(tipo)) {
+      setMetodoIngresoProducto('manual-unidad');
+      setTipoCalculoProducto('unidad');
+      setDescripcionProducto(tipo);
+      setCantidadProducto('');
+      return;
+    }
+
     setMetodoIngresoProducto('proveedor');
     setDescripcionProducto('');
     setLargoProducto('12,00');
@@ -569,6 +592,31 @@ function App() {
     }, 0);
   }
 
+  function prepararIngresoUnidadManual() {
+    setMetodoIngresoProducto('manual-unidad');
+    setProductoProveedorId('');
+    setTipoCalculoProducto('unidad');
+    setDescripcionProducto(
+      esTipoSoloUnidad(tipoProductoSeleccionado)
+        ? tipoProductoSeleccionado
+        : descripcionProducto,
+    );
+    setLargoProducto('');
+    setAnchoProducto('');
+    setEspesorProducto('');
+    setMasaNominalProducto(null);
+    setPesoTotalProducto('');
+    setSelectorProductoAbierto(false);
+    setCalculadoraAbierta(false);
+    setMensaje(
+      'Mallas se cotiza por unidad. Cargá la cantidad pedida y el precio unitario USD/Und.',
+    );
+
+    window.setTimeout(() => {
+      descripcionProductoRef.current?.focus();
+    }, 0);
+  }
+
   function prepararIngresoPorCalculadora() {
     const descripcionCalculadora = esTipoSoloCalculadora(
       tipoProductoSeleccionado,
@@ -618,7 +666,9 @@ function App() {
     setMensaje('');
   }
 
-  function aceptarPesoCalculado(pesoCalculado: number) {
+  function aceptarPesoCalculado(resultado: ResultadoCalculoMetal) {
+    const { pesoCalculado, largoMm } = resultado;
+
     if (!Number.isFinite(pesoCalculado) || pesoCalculado <= 0) {
       setMensaje('La calculadora no devolvió un peso válido.');
       return;
@@ -627,6 +677,13 @@ function App() {
     setMetodoIngresoProducto('calculadora');
     setTipoCalculoProducto('peso');
     setPesoTotalProducto(formatearDecimal4SinMiles(pesoCalculado));
+
+    if (Number.isFinite(largoMm) && largoMm > 0) {
+      setLargoProducto(formatearDecimal2SinMiles(largoMm / 1000));
+    } else {
+      setLargoProducto('');
+    }
+
     setCalculadoraAbierta(false);
     setMensaje('');
     setAvisoModal('Peso total calculado.');
@@ -649,6 +706,11 @@ function App() {
 
     if (esTipoSoloPesoManual(tipoProductoSeleccionado)) {
       prepararIngresoPesoManual();
+      return;
+    }
+
+    if (esTipoSoloUnidad(tipoProductoSeleccionado)) {
+      prepararIngresoUnidadManual();
       return;
     }
 
@@ -884,24 +946,6 @@ function App() {
     setMensaje('');
   }
 
-  function normalizarEntradaDecimal2(event: ChangeEvent<HTMLInputElement>) {
-    event.currentTarget.value = normalizarTextoDecimal(
-      event.currentTarget.value,
-      2,
-    );
-  }
-
-  function completarCampoDecimal2(event: FocusEvent<HTMLInputElement>) {
-    const texto = event.currentTarget.value.trim();
-
-    if (!texto) return;
-
-    const numero = parsearNumeroDecimal(texto);
-
-    if (Number.isFinite(numero)) {
-      event.currentTarget.value = formatearDecimal2SinMiles(numero);
-    }
-  }
 
   function marcarClienteModificado() {
     setClienteDatosModificados(true);
@@ -919,28 +963,11 @@ function App() {
       formData.get('clienteDireccion') || '',
     ).trim();
     const clienteTelefono = String(formData.get('clienteTelefono') || '').trim();
-    const cotizacionUsdAlTexto = String(
-      formData.get('cotizacionUsdAl') || '',
-    ).trim();
-
-    let cotizacionUsdAl = '';
-
-    if (cotizacionUsdAlTexto) {
-      const cotizacionNumero = parsearNumeroDecimal(cotizacionUsdAlTexto);
-
-      if (!Number.isFinite(cotizacionNumero) || cotizacionNumero <= 0) {
-        setMensaje('La cotización USD debe ser un número válido mayor que cero.');
-        return;
-      }
-
-      cotizacionUsdAl = formatearDecimal2SinMiles(cotizacionNumero);
-    }
 
     await actualizarDatosCliente(presupuestoActual.id, {
       clienteNombre,
       clienteDireccion,
       clienteTelefono,
-      cotizacionUsdAl,
     });
 
     await recargarPresupuestoActual(presupuestoActual.id);
@@ -958,11 +985,15 @@ function App() {
 
     const tipoCalculo = linea.tipoCalculo ?? coincidencia?.tipoCalculo ?? 'peso';
     const esRecortes = linea.descripcion.trim().startsWith('Recortes');
+    const esMallas =
+      tipoCalculo === 'unidad' || linea.descripcion.trim().startsWith('Mallas');
     const metodoIngreso: MetodoIngresoProducto = esRecortes
       ? 'manual-peso'
-      : coincidencia || tipoCalculo !== 'peso'
-        ? 'proveedor'
-        : 'calculadora';
+      : esMallas
+        ? 'manual-unidad'
+        : coincidencia || tipoCalculo !== 'peso'
+          ? 'proveedor'
+          : 'calculadora';
 
     setMetodoIngresoProducto(metodoIngreso);
     setLineaEnEdicion(linea);
@@ -988,6 +1019,9 @@ function App() {
       setTipoProductoSeleccionado('Recortes');
       setProductoProveedorId('');
       setCantidadProducto('1');
+    } else if (esMallas) {
+      setTipoProductoSeleccionado('Mallas');
+      setProductoProveedorId('');
     } else if (coincidencia) {
       setTipoProductoSeleccionado(coincidencia.tipo);
       setProductoProveedorId(coincidencia.id);
@@ -996,7 +1030,13 @@ function App() {
       setProductoProveedorId('');
     }
 
-    if (tipoCalculo === 'metro') {
+    if (tipoCalculo === 'unidad') {
+      setMasaNominalProducto(null);
+      setLargoProducto('');
+      setAnchoProducto('');
+      setEspesorProducto('');
+      setPesoTotalProducto('');
+    } else if (tipoCalculo === 'metro') {
       setMasaNominalProducto(null);
       setLargoProducto(
         linea.largo && linea.largo > 0
@@ -1023,10 +1063,7 @@ function App() {
         formatearDecimal4SinMiles(obtenerPesoTotalLinea(linea)),
       );
 
-      if (
-        metodoIngreso === 'calculadora' ||
-        metodoIngreso === 'manual-peso'
-      ) {
+      if (metodoIngreso === 'manual-peso') {
         setLargoProducto('');
       } else if (linea.largo && linea.largo > 0) {
         setLargoProducto(formatearDecimal2SinMiles(linea.largo));
@@ -1101,7 +1138,9 @@ function App() {
       return;
     }
 
-    if (
+    if (metodoIngresoProducto === 'manual-unidad') {
+      pesoTotal = 0;
+    } else if (
       metodoIngresoProducto === 'calculadora' ||
       metodoIngresoProducto === 'manual-peso'
     ) {
@@ -1166,23 +1205,32 @@ function App() {
     }
 
     const tipoCalculoLinea: TipoCalculoLinea =
-      metodoIngresoProducto === 'calculadora' ||
-      metodoIngresoProducto === 'manual-peso'
-        ? 'peso'
-        : tipoCalculoProducto;
+      metodoIngresoProducto === 'manual-unidad'
+        ? 'unidad'
+        : metodoIngresoProducto === 'calculadora' ||
+            metodoIngresoProducto === 'manual-peso'
+          ? 'peso'
+          : tipoCalculoProducto;
 
     const datosLinea = {
       descripcion,
       cantidad,
-      unidad: tipoCalculoLinea === 'metro' ? 'm' : 'kg',
+      unidad:
+        tipoCalculoLinea === 'metro'
+          ? 'm'
+          : tipoCalculoLinea === 'unidad'
+            ? 'und'
+            : 'kg',
       precioUnitario,
       pesoTotal,
       tipoCalculo: tipoCalculoLinea,
       largo:
-        metodoIngresoProducto === 'calculadora' ||
-        metodoIngresoProducto === 'manual-peso'
+        metodoIngresoProducto === 'manual-peso' ||
+        metodoIngresoProducto === 'manual-unidad'
           ? undefined
-          : largo,
+          : Number.isFinite(largo) && largo > 0
+            ? largo
+            : undefined,
       ancho:
         metodoIngresoProducto === 'proveedor' &&
         tipoCalculoProducto === 'plancha'
@@ -1810,7 +1858,9 @@ function App() {
             <p style={{ margin: '8px 0 0', color: '#ffffff' }}>
               {esTipoSoloPesoManual(tipoProductoSeleccionado)
                 ? 'Este producto no tiene subproductos. Se cotiza ingresando manualmente el peso total y el precio USD/kg.'
-                : 'Este producto no tiene subproductos en la tabla. Se cotiza mediante la calculadora de metales.'}
+                : esTipoSoloUnidad(tipoProductoSeleccionado)
+                  ? 'Este producto no tiene subproductos. Se cotiza por unidad ingresando cantidad y precio unitario.'
+                  : 'Este producto no tiene subproductos en la tabla. Se cotiza mediante la calculadora de metales.'}
             </p>
           </div>
         ) : (
@@ -1895,11 +1945,14 @@ function App() {
               ? 'Continuar con calculadora'
               : esTipoSoloPesoManual(tipoProductoSeleccionado)
                 ? 'Ingresar peso y precio'
-                : 'Usar producto de tabla'}
+                : esTipoSoloUnidad(tipoProductoSeleccionado)
+                  ? 'Ingresar cantidad y precio'
+                  : 'Usar producto de tabla'}
           </button>
 
           {!esTipoSoloCalculadora(tipoProductoSeleccionado) &&
-            !esTipoSoloPesoManual(tipoProductoSeleccionado) && (
+            !esTipoSoloPesoManual(tipoProductoSeleccionado) &&
+            !esTipoSoloUnidad(tipoProductoSeleccionado) && (
               <button
                 type="button"
                 className="secondary-button"
@@ -1909,7 +1962,8 @@ function App() {
               </button>
             )}
 
-          {!esTipoSoloPesoManual(tipoProductoSeleccionado) && (
+          {!esTipoSoloPesoManual(tipoProductoSeleccionado) &&
+            !esTipoSoloUnidad(tipoProductoSeleccionado) && (
             <button
               type="button"
               className="secondary-button"
@@ -2323,31 +2377,15 @@ function App() {
                   />
                 </label>
 
-                <div className="client-two-column-grid">
-                  <label className="field-label">
-                    Teléfono
-                    <input
-                      name="clienteTelefono"
-                      defaultValue={presupuestoActual.clienteTelefono}
-                      className="text-input"
-                      autoComplete="off"
-                    />
-                  </label>
-
-                  <label className="field-label">
-                    Cotización USD
-                    <input
-                      name="cotizacionUsdAl"
-                      defaultValue={presupuestoActual.cotizacionUsdAl}
-                      className="text-input"
-                      inputMode="decimal"
-                      autoComplete="off"
-                      placeholder="0,00"
-                      onChange={normalizarEntradaDecimal2}
-                      onBlur={completarCampoDecimal2}
-                    />
-                  </label>
-                </div>
+                <label className="field-label">
+                  Teléfono
+                  <input
+                    name="clienteTelefono"
+                    defaultValue={presupuestoActual.clienteTelefono}
+                    className="text-input"
+                    autoComplete="off"
+                  />
+                </label>
 
                 <button
                   type="submit"
@@ -2403,13 +2441,50 @@ function App() {
                 onClick={abrirSelectorProducto}
               >
                 {metodoIngresoProducto === 'calculadora' ||
-                metodoIngresoProducto === 'manual-peso'
+                metodoIngresoProducto === 'manual-peso' ||
+                metodoIngresoProducto === 'manual-unidad'
                   ? 'Cambiar método de ingreso'
                   : productoProveedorId
                     ? 'Cambiar producto'
                     : 'Seleccionar producto'}
               </button>
             </div>
+
+            {metodoIngresoProducto === 'manual-unidad' && (
+              <div className="product-two-column-grid">
+                <label className="field-label">
+                  Cantidad
+                  <input
+                    name="cantidad"
+                    className="text-input product-number-input"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoComplete="off"
+                    placeholder="Entero"
+                    value={cantidadProducto}
+                    onChange={(event) =>
+                      setCantidadProducto(
+                        event.currentTarget.value.replace(/\D/g, ''),
+                      )
+                    }
+                  />
+                </label>
+
+                <label className="field-label">
+                  Precio unitario USD/Und
+                  <input
+                    name="precioUnitario"
+                    className="text-input product-number-input"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    placeholder="0,0000"
+                    value={precioUnitarioProducto}
+                    onChange={manejarCambioPrecioUnitario}
+                    onBlur={completarPrecioUnitario}
+                  />
+                </label>
+              </div>
+            )}
 
             {metodoIngresoProducto === 'manual-peso' && (
               <>
@@ -2829,14 +2904,7 @@ function App() {
                           <strong>{formatearEntero(linea.cantidad)}</strong>
                         </span>
 
-                        {(linea.tipoCalculo ?? 'peso') === 'metro' ? (
-                          <span>
-                            Largo:{' '}
-                            <strong>
-                              {formatearDecimal4(linea.largo ?? 0)} m
-                            </strong>
-                          </span>
-                        ) : (linea.tipoCalculo ?? 'peso') === 'plancha' ? (
+                        {(linea.tipoCalculo ?? 'peso') === 'plancha' ? (
                           <span>
                             Medidas:{' '}
                             <strong>
@@ -2845,14 +2913,14 @@ function App() {
                               {formatearDecimal4(linea.espesor ?? 0)} mm
                             </strong>
                           </span>
-                        ) : (
+                        ) : linea.largo && linea.largo > 0 ? (
                           <span>
                             Largo:{' '}
                             <strong>
-                              {formatearDecimal4(linea.largo ?? 0)} m
+                              {formatearDecimal4(linea.largo)} m
                             </strong>
                           </span>
-                        )}
+                        ) : null}
                       </div>
 
                       <div className="product-card-right-values">
@@ -2865,7 +2933,7 @@ function App() {
                               )}
                             </strong>
                           </span>
-                        ) : (
+                        ) : (linea.tipoCalculo ?? 'peso') === 'unidad' ? null : (
                           <span>
                             Peso total:{' '}
                             <strong>{formatearDecimal4(pesoTotal)} kg</strong>
@@ -2878,7 +2946,9 @@ function App() {
                             {formatearDecimal4(linea.precioUnitario)}/
                             {(linea.tipoCalculo ?? 'peso') === 'metro'
                               ? 'm'
-                              : 'kg'}
+                              : (linea.tipoCalculo ?? 'peso') === 'unidad'
+                                ? 'Und'
+                                : 'kg'}
                           </strong>
                         </span>
                       </div>

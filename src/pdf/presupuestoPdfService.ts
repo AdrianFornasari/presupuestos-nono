@@ -5,6 +5,7 @@ import type {
   LineaPresupuesto,
   PdfPresupuesto,
   Presupuesto,
+  TipoCalculoLinea,
 } from '../types/presupuesto';
 import { fechaHoraAhoraISO, formatearImporteUSD } from '../utils/format';
 
@@ -14,20 +15,26 @@ const ESCALA_TEXTO_TABLA = 1.1;
 const TABLA_X = 14;
 const TABLA_ANCHO = 182;
 const TABLA_DERECHA = TABLA_X + TABLA_ANCHO;
-
-const PADDING_COLUMNA = 4;
+const CENTRO_MARGENES = TABLA_X + TABLA_ANCHO / 2;
 
 const ALTO_CABECERA_TABLA = 10;
 const ALTO_FILA_MINIMA = 12;
-const ALTO_FILA_TOTAL = 20;
+const ALTO_FILA_TOTAL = 13;
 
 const CAJA_LEGAL_X = 14;
 const CAJA_LEGAL_ANCHO = 182;
-const CAJA_LEGAL_ALTO = 62;
+const CAJA_LEGAL_ALTO = 50;
 const MARGEN_INFERIOR_CAJA_LEGAL = 12;
 
-const Y_INICIO_TABLA = 96;
+const Y_INICIO_TABLA = 92;
 const MARGEN_INFERIOR_DETALLE = 18;
+
+interface ColumnasTabla {
+  productoFin: number;
+  unidadFin: number;
+  cantidadFin: number;
+  precioFin: number;
+}
 
 function setFontSizeEscalado(doc: jsPDF, tamanioBase: number): void {
   doc.setFontSize(tamanioBase * ESCALA_TEXTO);
@@ -65,50 +72,40 @@ function formatearFechaPdf(fechaISO: string): string {
   return `${dia}-${mes}-${anio}`;
 }
 
+function formatearPrecioUnitario3(valor: number): string {
+  return new Intl.NumberFormat('es-AR', {
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
+  }).format(valor);
+}
+
 function obtenerPesoTotalLinea(linea: LineaPresupuesto): number {
   return linea.pesoTotal ?? linea.acumulado ?? 0;
 }
 
 function obtenerTipoCalculoLinea(
   linea: LineaPresupuesto,
-): 'peso' | 'metro' | 'plancha' {
+): TipoCalculoLinea {
   return linea.tipoCalculo ?? 'peso';
 }
 
-function formatearKilogramos(valor: number): string {
-  return `${formatearImporteUSD(valor)} Kg`;
-}
-
-function parsearCotizacionUsd(valor: string): number {
-  const texto = valor.trim();
-
-  if (!texto) return Number.NaN;
-
-  const normalizado = texto
-    .replace(/\s/g, '')
-    .replace(/\./g, '')
-    .replace(',', '.')
-    .replace(/[^0-9.-]/g, '');
-
-  const numero = Number(normalizado);
-
-  return Number.isFinite(numero) && numero > 0 ? numero : Number.NaN;
-}
-
-function formatearImportePesos(valor: number): string {
-  return new Intl.NumberFormat('es-AR', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(valor);
+function formatearCantidadFisica(linea: LineaPresupuesto): string {
+  return String(linea.cantidad);
 }
 
 function formatearCantidadCotizada(linea: LineaPresupuesto): string {
-  if (obtenerTipoCalculoLinea(linea) === 'metro') {
+  const tipoCalculo = obtenerTipoCalculoLinea(linea);
+
+  if (tipoCalculo === 'unidad') {
+    return `${linea.cantidad} Und`;
+  }
+
+  if (tipoCalculo === 'metro') {
     const metrosTotales = linea.cantidad * (linea.largo ?? 0);
     return `${formatearImporteUSD(metrosTotales)} m`;
   }
 
-  return formatearKilogramos(obtenerPesoTotalLinea(linea));
+  return `${formatearImporteUSD(obtenerPesoTotalLinea(linea))} kg`;
 }
 
 function obtenerDescripcionPdf(linea: LineaPresupuesto): string {
@@ -129,36 +126,23 @@ function obtenerCajaLegalY(doc: jsPDF): number {
   return altoPagina - MARGEN_INFERIOR_CAJA_LEGAL - CAJA_LEGAL_ALTO;
 }
 
-function obtenerColumnasTabla(doc: jsPDF): {
-  productoFin: number;
-  cantidadFin: number;
-  unidadFin: number;
-  precioFin: number;
-} {
-  doc.setFont('helvetica', 'bold');
-  setFontSizeTabla(doc, 8.5);
-
-  const anchoCantidad = doc.getTextWidth('Cantidad') + PADDING_COLUMNA;
-  const anchoUnidad = doc.getTextWidth('Unid.') + PADDING_COLUMNA;
-  const anchoPrecio = doc.getTextWidth('Precio unit.') + PADDING_COLUMNA;
-  const anchoSubtotal = doc.getTextWidth('Subtotal U$S') + PADDING_COLUMNA;
-
+function obtenerColumnasTabla(): ColumnasTabla {
+  const anchoUnidad = 18;
+  const anchoCantidad = 32;
+  const anchoPrecio = 26;
+  const anchoImporte = 30;
   const anchoProducto =
-    TABLA_ANCHO -
-    anchoCantidad -
-    anchoUnidad -
-    anchoPrecio -
-    anchoSubtotal;
+    TABLA_ANCHO - anchoUnidad - anchoCantidad - anchoPrecio - anchoImporte;
 
   const productoFin = TABLA_X + anchoProducto;
-  const cantidadFin = productoFin + anchoCantidad;
-  const unidadFin = cantidadFin + anchoUnidad;
-  const precioFin = unidadFin + anchoPrecio;
+  const unidadFin = productoFin + anchoUnidad;
+  const cantidadFin = unidadFin + anchoCantidad;
+  const precioFin = cantidadFin + anchoPrecio;
 
   return {
     productoFin,
-    cantidadFin,
     unidadFin,
+    cantidadFin,
     precioFin,
   };
 }
@@ -173,34 +157,35 @@ function dibujarEncabezado(doc: jsPDF, presupuesto: Presupuesto): void {
   doc.text('C.U.I.T.: 30-71696322-1', 14, 22);
   doc.text('I.Brutos: 30716963221', 14, 27);
   doc.text('Fec. Ini.Act.: 01-Aug-20', 14, 32);
-
   doc.text('341-6768783', 14, 39);
-  doc.text('Suipacha 9999', 14, 44);
-  doc.text('(2000) ROSARIO - Pcia. SANTA FE', 14, 49);
-  doc.text('IVA RESPONSABLE INSCRIPTO', 14, 54);
+  doc.text('(2000) ROSARIO - Pcia. SANTA FE', 14, 44);
+  doc.text('IVA RESPONSABLE INSCRIPTO', 14, 49);
 
   doc.setFont('helvetica', 'bold');
+  setFontSizeEscalado(doc, 15);
+  doc.text('X', CENTRO_MARGENES, 18, { align: 'center' });
+
   setFontSizeEscalado(doc, 13);
-  doc.text('X Cotización', 150, 18);
+  doc.text('Cotización', 150, 18);
 
   doc.setFont('helvetica', 'normal');
-  setFontSizeEscalado(doc, 10);
-  doc.text(`Fecha: ${formatearFechaPdf(presupuesto.fechaEmision)}`, 150, 27);
-  doc.text('Original', 150, 34);
+  setFontSizeEscalado(doc, 9.5);
+  doc.text(`N°: ${presupuesto.numeroFormateado}`, 150, 25);
+  doc.text(`Fecha: ${formatearFechaPdf(presupuesto.fechaEmision)}`, 150, 32);
+  doc.text('Original', 150, 39);
 
   doc.setFont('helvetica', 'bold');
+  setFontSizeEscalado(doc, 10);
   doc.text('CLIENTE:', 14, 68);
-  doc.text('DIRECCIÓN:', 14, 76);
-  doc.text('TELÉFONO:', 14, 84);
+  doc.text('TELÉFONO:', 14, 76);
 
   doc.setFont('helvetica', 'normal');
   doc.text(presupuesto.clienteNombre || '-', 42, 68);
-  doc.text(presupuesto.clienteDireccion || '-', 42, 76);
-  doc.text(presupuesto.clienteTelefono || '-', 42, 84);
+  doc.text(presupuesto.clienteTelefono || '-', 42, 76);
 
   doc.setFont('helvetica', 'bold');
   doc.text('MONEDA:', 130, 68);
-  doc.text('VENDEDOR:', 130, 76);
+  doc.text('CONTACTO:', 130, 76);
 
   doc.setFont('helvetica', 'normal');
   doc.text('USD', 154, 68);
@@ -208,13 +193,12 @@ function dibujarEncabezado(doc: jsPDF, presupuesto: Presupuesto): void {
 }
 
 function dibujarCabeceraTabla(doc: jsPDF, y: number): void {
-  const { productoFin, cantidadFin, unidadFin, precioFin } =
-    obtenerColumnasTabla(doc);
+  const { productoFin, unidadFin, cantidadFin, precioFin } =
+    obtenerColumnasTabla();
 
   doc.setFillColor(225, 225, 225);
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.3);
-
   doc.rect(TABLA_X, y, TABLA_ANCHO, ALTO_CABECERA_TABLA, 'FD');
 
   doc.setFont('helvetica', 'bold');
@@ -222,75 +206,31 @@ function dibujarCabeceraTabla(doc: jsPDF, y: number): void {
   doc.setTextColor(0, 0, 0);
 
   doc.text('Producto', 16, y + 6);
-
-  doc.text(
-    'Cantidad',
-    (productoFin + cantidadFin) / 2,
-    y + 6,
-    {
-      align: 'center',
-    },
-  );
-
-  doc.text(
-    'Unid.',
-    (cantidadFin + unidadFin) / 2,
-    y + 6,
-    {
-      align: 'center',
-    },
-  );
-
-  doc.text(
-    'Precio unit.',
-    (unidadFin + precioFin) / 2,
-    y + 6,
-    {
-      align: 'center',
-    },
-  );
-
-  doc.text(
-    'Subtotal U$S',
-    (precioFin + TABLA_DERECHA) / 2,
-    y + 6,
-    {
-      align: 'center',
-    },
-  );
+  doc.text('Unid.', (productoFin + unidadFin) / 2, y + 6, {
+    align: 'center',
+  });
+  doc.text('Cant.', (unidadFin + cantidadFin) / 2, y + 6, {
+    align: 'center',
+  });
+  doc.text('Precio', (cantidadFin + precioFin) / 2, y + 6, {
+    align: 'center',
+  });
+  doc.text('Imp. (U$S)', (precioFin + TABLA_DERECHA) / 2, y + 6, {
+    align: 'center',
+  });
 
   doc.setLineWidth(0.2);
-  doc.line(
-    productoFin,
-    y,
-    productoFin,
-    y + ALTO_CABECERA_TABLA,
-  );
-  doc.line(
-    cantidadFin,
-    y,
-    cantidadFin,
-    y + ALTO_CABECERA_TABLA,
-  );
-  doc.line(
-    unidadFin,
-    y,
-    unidadFin,
-    y + ALTO_CABECERA_TABLA,
-  );
-  doc.line(
-    precioFin,
-    y,
-    precioFin,
-    y + ALTO_CABECERA_TABLA,
-  );
+  doc.line(productoFin, y, productoFin, y + ALTO_CABECERA_TABLA);
+  doc.line(unidadFin, y, unidadFin, y + ALTO_CABECERA_TABLA);
+  doc.line(cantidadFin, y, cantidadFin, y + ALTO_CABECERA_TABLA);
+  doc.line(precioFin, y, precioFin, y + ALTO_CABECERA_TABLA);
 }
 
 function calcularAltoFila(
   doc: jsPDF,
   linea: LineaPresupuesto,
 ): { descripcionLineas: string[]; altoFila: number } {
-  const { productoFin } = obtenerColumnasTabla(doc);
+  const { productoFin } = obtenerColumnasTabla();
 
   doc.setFont('helvetica', 'normal');
   setFontSizeTabla(doc, 8);
@@ -316,9 +256,8 @@ function dibujarFilaDetalle(
   y: number,
   altoFila: number,
 ): void {
-  const { productoFin, cantidadFin, unidadFin, precioFin } =
-    obtenerColumnasTabla(doc);
-  const yTexto = y + 6;
+  const { productoFin, unidadFin, cantidadFin, precioFin } =
+    obtenerColumnasTabla();
 
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.2);
@@ -328,108 +267,82 @@ function dibujarFilaDetalle(
   setFontSizeTabla(doc, 8);
   doc.setTextColor(0, 0, 0);
 
-  doc.text(descripcionLineas, 16, yTexto, {
+  const altoLineaDescripcion = 4.2;
+  const altoBloqueDescripcion =
+    descripcionLineas.length <= 1
+      ? altoLineaDescripcion
+      : altoLineaDescripcion * descripcionLineas.length;
+
+  const yDescripcion =
+    y +
+    (altoFila - altoBloqueDescripcion) / 2 +
+    altoLineaDescripcion * 0.78;
+
+  const yTextoSimple = y + altoFila / 2 + 1.25;
+
+  doc.text(descripcionLineas, 16, yDescripcion, {
     lineHeightFactor: 1.18,
   });
 
   doc.text(
+    formatearCantidadFisica(linea),
+    (productoFin + unidadFin) / 2,
+    yTextoSimple,
+    { align: 'center' },
+  );
+
+  doc.text(
     formatearCantidadCotizada(linea),
     cantidadFin - 2,
-    yTexto,
-    {
-      align: 'right',
-    },
+    yTextoSimple,
+    { align: 'right' },
   );
 
   doc.text(
-    String(linea.cantidad),
-    (cantidadFin + unidadFin) / 2,
-    yTexto,
-    {
-      align: 'center',
-    },
-  );
-
-  doc.text(
-    formatearImporteUSD(linea.precioUnitario),
+    formatearPrecioUnitario3(linea.precioUnitario),
     precioFin - 2,
-    yTexto,
-    {
-      align: 'right',
-    },
+    yTextoSimple,
+    { align: 'right' },
   );
 
   doc.text(
     formatearImporteUSD(linea.subtotal),
     TABLA_DERECHA - 2,
-    yTexto,
-    {
-      align: 'right',
-    },
+    yTextoSimple,
+    { align: 'right' },
   );
 
   doc.line(productoFin, y, productoFin, y + altoFila);
-  doc.line(cantidadFin, y, cantidadFin, y + altoFila);
   doc.line(unidadFin, y, unidadFin, y + altoFila);
+  doc.line(cantidadFin, y, cantidadFin, y + altoFila);
   doc.line(precioFin, y, precioFin, y + altoFila);
 }
 
-function dibujarFilaTotales(
+function dibujarFilaTotal(
   doc: jsPDF,
   y: number,
-  totalKg: number,
   totalUsd: number,
-  cotizacionUsdAl: string,
 ): void {
-  const divisionX = 105;
-  const cotizacion = parsearCotizacionUsd(cotizacionUsdAl);
-  const totalPesos = Number.isFinite(cotizacion)
-    ? totalUsd * cotizacion
-    : Number.NaN;
-
   doc.setFillColor(205, 205, 205);
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.35);
-
   doc.rect(TABLA_X, y, TABLA_ANCHO, ALTO_FILA_TOTAL, 'FD');
-  doc.line(divisionX, y, divisionX, y + ALTO_FILA_TOTAL);
 
   doc.setFont('helvetica', 'bold');
   setFontSizeTabla(doc, 10);
   doc.setTextColor(0, 0, 0);
-
-  doc.text(
-    `Total de kg: ${formatearImporteUSD(totalKg)} Kg`,
-    18,
-    y + 12,
-  );
-
   doc.text(
     `Total U$S: ${formatearImporteUSD(totalUsd)}`,
     TABLA_DERECHA - 4,
-    y + 7,
-    {
-      align: 'right',
-    },
-  );
-
-  doc.text(
-    Number.isFinite(totalPesos)
-      ? `Total $: ${formatearImportePesos(totalPesos)}`
-      : 'Total $: -',
-    TABLA_DERECHA - 4,
-    y + 15,
-    {
-      align: 'right',
-    },
+    y + 8,
+    { align: 'right' },
   );
 
   doc.setLineWidth(0.2);
 }
 
-function agregarPieLegal(doc: jsPDF, presupuesto: Presupuesto): void {
+function agregarPieLegal(doc: jsPDF): void {
   const cajaY = obtenerCajaLegalY(doc);
-  const separadorY = cajaY + CAJA_LEGAL_ALTO - 12;
   const anchoTexto = CAJA_LEGAL_ANCHO - 8;
 
   doc.setDrawColor(0, 0, 0);
@@ -472,28 +385,6 @@ function agregarPieLegal(doc: jsPDF, presupuesto: Presupuesto): void {
     }
   });
 
-  doc.setLineWidth(0.3);
-  doc.line(
-    CAJA_LEGAL_X + 3,
-    separadorY,
-    CAJA_LEGAL_X + CAJA_LEGAL_ANCHO - 3,
-    separadorY,
-  );
-
-  doc.setFont('helvetica', 'bold');
-  setFontSizeEscalado(doc, 8);
-  doc.text('Cotización USD al', 125, cajaY + CAJA_LEGAL_ALTO - 5);
-
-  doc.setFont('helvetica', 'normal');
-  doc.text(
-    presupuesto.cotizacionUsdAl || '-',
-    CAJA_LEGAL_X + CAJA_LEGAL_ANCHO - 4,
-    cajaY + CAJA_LEGAL_ALTO - 5,
-    {
-      align: 'right',
-    },
-  );
-
   doc.setLineWidth(0.2);
 }
 
@@ -505,7 +396,7 @@ function agregarNumerosPagina(doc: jsPDF): void {
     doc.setFont('helvetica', 'normal');
     setFontSizeEscalado(doc, 9);
     doc.setTextColor(0, 0, 0);
-    doc.text(`Pag. ${pagina}/${totalPaginas}`, 150, 41);
+    doc.text(`Pag. ${pagina}/${totalPaginas}`, 150, 48);
   }
 }
 
@@ -533,14 +424,6 @@ export async function generarYGuardarPdfPresupuesto(
   const limiteDetallePagina = altoPagina - MARGEN_INFERIOR_DETALLE;
   const cajaLegalY = obtenerCajaLegalY(doc);
 
-  const totalKg = lineas.reduce((acumulado, linea) => {
-    if (obtenerTipoCalculoLinea(linea) === 'metro') {
-      return acumulado;
-    }
-
-    return acumulado + obtenerPesoTotalLinea(linea);
-  }, 0);
-
   const totalUsd = lineas.reduce(
     (acumulado, linea) => acumulado + linea.subtotal,
     0,
@@ -555,14 +438,12 @@ export async function generarYGuardarPdfPresupuesto(
     const { descripcionLineas, altoFila } = calcularAltoFila(doc, linea);
     const esUltimaLinea = indice === lineas.length - 1;
 
-    const necesitaEspacioParaTotalesYPie =
-      esUltimaLinea &&
-      y + altoFila + ALTO_FILA_TOTAL + 5 > cajaLegalY;
+    const necesitaEspacioParaTotalYPie =
+      esUltimaLinea && y + altoFila + ALTO_FILA_TOTAL + 5 > cajaLegalY;
 
-    const noEntraEnPagina =
-      y + altoFila > limiteDetallePagina;
+    const noEntraEnPagina = y + altoFila > limiteDetallePagina;
 
-    if (noEntraEnPagina || necesitaEspacioParaTotalesYPie) {
+    if (noEntraEnPagina || necesitaEspacioParaTotalYPie) {
       doc.addPage();
       y = iniciarPaginaDeDetalle(doc, presupuesto);
     }
@@ -593,8 +474,8 @@ export async function generarYGuardarPdfPresupuesto(
     y = iniciarPaginaDeDetalle(doc, presupuesto);
   }
 
-  dibujarFilaTotales(doc, y, totalKg, totalUsd, presupuesto.cotizacionUsdAl);
-  agregarPieLegal(doc, presupuesto);
+  dibujarFilaTotal(doc, y, totalUsd);
+  agregarPieLegal(doc);
   agregarNumerosPagina(doc);
 
   const blob = doc.output('blob');

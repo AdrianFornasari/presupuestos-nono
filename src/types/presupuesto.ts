@@ -1,6 +1,6 @@
 export type EstadoPresupuesto = 'borrador' | 'emitido' | 'enviado' | 'anulado';
 export type EstadoDrive = 'tablet' | 'pendiente' | 'realizada';
-export type TipoCalculoLinea = 'peso' | 'metro' | 'plancha';
+export type TipoCalculoLinea = 'peso' | 'metro' | 'plancha' | 'unidad';
 
 export interface Presupuesto {
   id: string;
@@ -42,6 +42,7 @@ export interface LineaPresupuesto {
    * - peso: perfiles/barras y otros productos cotizados por kg.
    * - metro: chapas acanaladas/trapezoidales cotizadas por metro lineal.
    * - plancha: planchas calculadas por volumen y cotizadas por kg.
+   * - unidad: productos cotizados por unidad, como Mallas.
    *
    * Es opcional para mantener compatibilidad con líneas antiguas.
    * Si no existe, se interpreta como "peso".

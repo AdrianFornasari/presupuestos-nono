@@ -32,6 +32,10 @@ function calcularSubtotalDatos(datos: DatosLineaPresupuesto): number {
     return redondearImporte(datos.cantidad * largo * datos.precioUnitario);
   }
 
+  if (datos.tipoCalculo === 'unidad') {
+    return redondearImporte(datos.cantidad * datos.precioUnitario);
+  }
+
   return redondearImporte(datos.pesoTotal * datos.precioUnitario);
 }
 
@@ -41,6 +45,10 @@ function calcularSubtotalLinea(linea: LineaPresupuesto): number {
   if (tipoCalculo === 'metro') {
     const largo = linea.largo ?? 0;
     return redondearImporte(linea.cantidad * largo * linea.precioUnitario);
+  }
+
+  if (tipoCalculo === 'unidad') {
+    return redondearImporte(linea.cantidad * linea.precioUnitario);
   }
 
   return redondearImporte(

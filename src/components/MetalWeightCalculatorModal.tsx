@@ -23,6 +23,11 @@ type ModoCalculoPerfil = 'tabla' | 'manual';
 type TipoChapaTecho = 'acanalada' | 'trapezoidal';
 type MaterialChapaTecho = 'galvanizada' | 'negra';
 
+export interface ResultadoCalculoMetal {
+  pesoCalculado: number;
+  largoMm: number;
+}
+
 interface MetalWeightCalculatorModalProps {
   abierto: boolean;
   cantidad: number;
@@ -31,7 +36,7 @@ interface MetalWeightCalculatorModalProps {
     | 'tubo-redondo'
     | 'tubo-cuadrado'
     | 'tubo-rectangular';
-  onAceptar: (pesoCalculado: number) => void;
+  onAceptar: (resultado: ResultadoCalculoMetal) => void;
   onCerrar: () => void;
 }
 
@@ -821,7 +826,12 @@ function MetalWeightCalculatorModal({
       return;
     }
 
-    onAceptar(valorTotal);
+    const largoMm = parsearDecimal(valores.largoMm);
+
+    onAceptar({
+      pesoCalculado: valorTotal,
+      largoMm: Number.isFinite(largoMm) ? largoMm : 0,
+    });
   }
 
   if (!abierto) return null;

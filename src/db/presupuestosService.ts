@@ -12,7 +12,6 @@ interface DatosClientePresupuesto {
   clienteNombre: string;
   clienteDireccion: string;
   clienteTelefono: string;
-  cotizacionUsdAl: string;
 }
 
 async function calcularProximoNumero(
@@ -157,7 +156,6 @@ export async function actualizarDatosCliente(
     clienteNombre: datos.clienteNombre,
     clienteDireccion: datos.clienteDireccion,
     clienteTelefono: datos.clienteTelefono,
-    cotizacionUsdAl: datos.cotizacionUsdAl,
     estadoDrive: 'pendiente',
     actualizadoEn: fechaHoraAhoraISO(),
   });
