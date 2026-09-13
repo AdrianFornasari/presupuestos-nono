@@ -261,7 +261,7 @@ function normalizarNumerosEnPalabras(texto: string): string {
 }
 
 function normalizarDecimalesNumericos(texto: string): string {
-  return texto.replace(/\b(\d+)\.(\d{1,2})\b/gu, '$1,$2');
+  return texto.replace(/\b(\d+)\.(\d{1,3})\b/gu, '$1,$2');
 }
 
 function normalizarPrecioCompactado(texto: string): string {
@@ -314,15 +314,15 @@ function formatearPrecioCanonico(valor: string): string {
   const limpio = valor.replace(/\$/gu, '').replace(/\s+/gu, '');
   const [entero, decimales = ''] = limpio.split(',');
 
-  if (!entero || !/^\d+$/u.test(entero) || !/^\d{0,2}$/u.test(decimales)) {
+  if (!entero || !/^\d+$/u.test(entero) || !/^\d{0,3}$/u.test(decimales)) {
     return limpio;
   }
 
-  return `${entero},${decimales.padEnd(2, '0')}`;
+  return `${entero},${decimales.padEnd(3, '0')}`;
 }
 
 function normalizarUnidadesPrecio(texto: string): string {
-  const precio = '(\\$?\\s*\\d+(?:,\\d{1,2})?)';
+  const precio = '(\\$?\\s*\\d+(?:,\\d{1,3})?)';
 
   let resultado = texto.replace(
     new RegExp(
@@ -410,7 +410,10 @@ function limpiarEspacios(texto: string): string {
 }
 
 /**
- * ETAPA 2: normalización lingüística determinística.
+ * ETAPA 2.3: normalización lingüística determinística.
+ *
+ * Convención de precios: coma como separador decimal y tres decimales
+ * canónicos (por ejemplo 1,400/kg, 1,800/m y 50,000/Und).
  *
  * Recibe exactamente el texto devuelto por SpeechRecognition y produce una
  * versión canónica para mostrar y, en etapas posteriores, entregar al
