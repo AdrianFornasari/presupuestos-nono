@@ -193,6 +193,34 @@ function normalizarPreciosHablados(texto: string): string {
     },
   );
 
+  // Chrome/Android puede mezclar palabras y cifras, por ejemplo
+  // "uno con 80 por metro". Ese patrón sigue siendo un precio hablado.
+  const conSeparadorMixto = new RegExp(
+    `\\b(${entero}|[0-9])\\s+(?:con|coma)\\s+(\\d{1,2})${contextoPrecio}`,
+    'giu',
+  );
+
+  resultado = resultado.replace(
+    conSeparadorMixto,
+    (coincidencia, parteEntera: string, parteDecimal: string) => {
+      const enteroNumerico = /^\d$/u.test(parteEntera)
+        ? Number(parteEntera)
+        : parsearNumeroEspanol(parteEntera);
+      const decimalNumerico = Number(parteDecimal);
+
+      if (
+        enteroNumerico === null ||
+        !Number.isInteger(decimalNumerico) ||
+        decimalNumerico < 0 ||
+        decimalNumerico > 99
+      ) {
+        return coincidencia;
+      }
+
+      return `${enteroNumerico},${String(decimalNumerico).padStart(2, '0')}`;
+    },
+  );
+
   const sinSeparador = new RegExp(
     `\\b(${entero})\\s+((?:diez|once|doce|trece|catorce|quince|dieciseis|dieciséis|diecisiete|dieciocho|diecinueve|veinte|veintiuno|veintiun|veintiún|veintiuna|veintidos|veintidós|veintitres|veintitrés|veinticuatro|veinticinco|veintiseis|veintiséis|veintisiete|veintiocho|veintinueve|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa)(?:\\s+y\\s+(?:un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve))?)${contextoPrecio}`,
     'giu',
@@ -260,7 +288,7 @@ function normalizarTerminosReconocidos(texto: string): string {
     .replace(/\b(?:mashas|mayas)\b/giu, 'mallas')
     .replace(/\bypn\b/giu, 'IPN')
     .replace(/\bipn\b/giu, 'IPN')
-    .replace(/\bipe\b/giu, 'IPE')
+    .replace(/\b(?:ipe|ype)\b/giu, 'IPE')
     .replace(/\bperfil(?:es)?\s+c\b/giu, (coincidencia) =>
       coincidencia.toLocaleLowerCase('es-AR').startsWith('perfiles')
         ? 'perfiles C'
@@ -280,6 +308,57 @@ function normalizarUnidades(texto: string): string {
     .replace(/\bkilogramos?\b/giu, 'kg')
     .replace(/\bkilos?\b/giu, 'kg')
     .replace(/\bmetros?\b/giu, 'm');
+}
+
+function normalizarUnidadesPrecio(texto: string): string {
+  const precio = '(\\$?\\s*\\d+(?:,\\d{1,2})?)';
+
+  let resultado = texto.replace(
+    new RegExp(
+      `\\b(a|precio)\\s+${precio}\\s+(?:(?:el|por)\\s+)?kg\\b`,
+      'giu',
+    ),
+    (_coincidencia, prefijo: string, valor: string) =>
+      `${prefijo} ${valor.replace(/\s+/gu, '')}/kg`,
+  );
+
+  resultado = resultado.replace(
+    new RegExp(
+      `\\b(a|precio)\\s+${precio}\\s+(?:(?:el|por)\\s+)?m\\b`,
+      'giu',
+    ),
+    (_coincidencia, prefijo: string, valor: string) =>
+      `${prefijo} ${valor.replace(/\s+/gu, '')}/m`,
+  );
+
+  resultado = resultado.replace(
+    new RegExp(
+      `^\\s*${precio}\\s+(?:(?:el|por)\\s+)?kg\\s*[.!]?\\s*$`,
+      'iu',
+    ),
+    (_coincidencia, valor: string) => `${valor.replace(/\s+/gu, '')}/kg`,
+  );
+
+  resultado = resultado.replace(
+    new RegExp(
+      `^\\s*${precio}\\s+(?:(?:el|por)\\s+)?m\\s*[.!]?\\s*$`,
+      'iu',
+    ),
+    (_coincidencia, valor: string) => `${valor.replace(/\s+/gu, '')}/m`,
+  );
+
+  // Para productos por unidad (por ejemplo Mallas), "cada una" expresa la
+  // unidad de cotización. Sólo se normaliza dentro de un contexto de precio.
+  resultado = resultado.replace(
+    new RegExp(
+      `\\b(a|precio)\\s+${precio}\\s+(?:cada\\s+(?:una|uno)|por\\s+unidad|unidad|und)\\b`,
+      'giu',
+    ),
+    (_coincidencia, prefijo: string, valor: string) =>
+      `${prefijo} ${valor.replace(/\s+/gu, '')}/Und`,
+  );
+
+  return resultado;
 }
 
 function normalizarEspesor(texto: string): string {
@@ -337,6 +416,7 @@ export function normalizeVoiceText(text: string): string {
   resultado = normalizarDecimalesNumericos(resultado);
   resultado = normalizarPrecioCompactado(resultado);
   resultado = normalizarUnidades(resultado);
+  resultado = normalizarUnidadesPrecio(resultado);
   resultado = normalizarMediosMetros(resultado);
   resultado = normalizarEspesor(resultado);
   resultado = normalizarDimensiones(resultado);
