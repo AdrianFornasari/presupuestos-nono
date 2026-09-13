@@ -148,95 +148,171 @@ function parsearNumeroEspanol(frase: string): number | null {
   return total + parcial;
 }
 
-function parsearFraccionPrecio(frase: string): number | null {
-  const normalizada = frase.trim().toLocaleLowerCase('es-AR');
+function palabraADigito(palabra: string): string | null {
+  const valor = UNIDADES[limpiarPalabra(palabra)];
 
-  const ceroMasUnidad = normalizada.match(
-    /^cero\s+(un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve)$/u,
-  );
-
-  if (ceroMasUnidad) {
-    return UNIDADES[ceroMasUnidad[1]] ?? null;
-  }
-
-  const valor = parsearNumeroEspanol(normalizada);
-
-  if (valor === null || valor < 0 || valor > 99) {
+  if (valor === undefined || valor < 0 || valor > 9) {
     return null;
   }
 
-  return valor;
+  return String(valor);
+}
+
+function parsearFraccionPrecio(frase: string): string | null {
+  const normalizada = frase
+    .trim()
+    .toLocaleLowerCase('es-AR')
+    .replace(/\s+/gu, ' ');
+
+  if (!normalizada) return null;
+
+  // Si SpeechRecognition ya devolvió cifras, se preserva el ancho porque
+  // "05" significa 0,05 y luego se completa a tres decimales como 050.
+  if (/^\d{1,3}$/u.test(normalizada)) {
+    return normalizada;
+  }
+
+  const tokens = normalizada
+    .split(/\s+/u)
+    .filter((token) => token !== 'y');
+
+  // Forma dígito por dígito: "cuatro dos cinco" -> 425.
+  if (tokens.length >= 1 && tokens.length <= 3) {
+    const digitos = tokens.map(palabraADigito);
+
+    if (digitos.every((digito) => digito !== null)) {
+      return digitos.join('');
+    }
+  }
+
+  // Forma agrupada habitual del rubro: "cuatro veinticinco" -> 425,
+  // "cero ochenta" -> 080. El primer grupo debe ser un solo dígito y el
+  // segundo un número entre 10 y 99.
+  if (tokens.length >= 2) {
+    const primerDigito = palabraADigito(tokens[0]);
+    const resto = parsearNumeroEspanol(tokens.slice(1).join(' '));
+
+    if (
+      primerDigito !== null &&
+      resto !== null &&
+      resto >= 10 &&
+      resto <= 99
+    ) {
+      return `${primerDigito}${String(resto).padStart(2, '0')}`;
+    }
+  }
+
+  // Forma cardinal: "cuarenta" -> 40, "cuatrocientos veinticinco" -> 425.
+  const valor = parsearNumeroEspanol(normalizada);
+
+  if (valor === null || valor < 0 || valor > 999) {
+    return null;
+  }
+
+  return String(valor);
+}
+
+function normalizarFraccionPrecio(fraccion: string): string | null {
+  const parsed = parsearFraccionPrecio(fraccion);
+
+  if (parsed === null || !/^\d{1,3}$/u.test(parsed)) {
+    return null;
+  }
+
+  return parsed.padEnd(3, '0');
 }
 
 function normalizarPreciosHablados(texto: string): string {
-  const entero = '(?:cero|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve)';
-  const fraccion = `(?:cero\\s+(?:un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve)|${PATRON_PALABRA_NUMERO}(?:(?:\\s+y\\s+|\\s+)(?:${PATRON_PALABRA_NUMERO}))?)`;
-  const contextoPrecio =
-    '(?=\\s+(?:(?:el\\s+)?(?:kilo|kilos|kg|kilogramo|kilogramos)|(?:por\\s+)?(?:metro|metros|m))\\b)';
+  const entero =
+    '(?:cero|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|[0-9])';
+  const componenteDecimal = `(?:${PATRON_PALABRA_NUMERO}|\\d{1,3})`;
+  const fraccion = `(?:${componenteDecimal})(?:(?:\\s+y\\s+|\\s+)${componenteDecimal}){0,3}`;
+  const unidadPrecio =
+    '(?:(?:el\\s+|por\\s+)?(?:kilo|kilos|kg|kilogramo|kilogramos)|(?:por\\s+)?(?:metro|metros|m)|(?:cada\\s+(?:una|uno)|por\\s+unidad|unidad|und))';
+  const unidadPrecioSolo =
+    '(?:(?:el|por)\\s+(?:kilo|kilos|kg|kilogramo|kilogramos|metro|metros|m)|(?:cada\\s+(?:una|uno)|por\\s+unidad|unidad|und))';
 
-  const conSeparador = new RegExp(
-    `\\b(${entero})\\s+(?:con|coma)\\s+(${fraccion})${contextoPrecio}`,
+  const parsearEntero = (valor: string): number | null => {
+    if (/^[0-9]$/u.test(valor)) return Number(valor);
+    return parsearNumeroEspanol(valor);
+  };
+
+  const reemplazar = (
+    coincidencia: string,
+    prefijo: string,
+    parteEntera: string,
+    parteDecimal: string,
+  ): string => {
+    const enteroNumerico = parsearEntero(parteEntera);
+    const decimalCanonico = normalizarFraccionPrecio(parteDecimal);
+
+    if (enteroNumerico === null || decimalCanonico === null) {
+      return coincidencia;
+    }
+
+    return `${prefijo}${enteroNumerico},${decimalCanonico}`;
+  };
+
+  // Dentro de una frase completa exigimos una señal explícita de precio.
+  // Esto evita confundir medidas como "2 12 m" con un precio.
+  const conSeparadorContextual = new RegExp(
+    `\\b(a|precio)\\s+(${entero})\\s+(?:con|coma)\\s+(${fraccion})(?=\\s+${unidadPrecio}\\b)`,
     'giu',
   );
 
   let resultado = texto.replace(
-    conSeparador,
-    (coincidencia, parteEntera: string, parteDecimal: string) => {
-      const enteroNumerico = parsearNumeroEspanol(parteEntera);
-      const decimalNumerico = parsearFraccionPrecio(parteDecimal);
-
-      if (enteroNumerico === null || decimalNumerico === null) {
-        return coincidencia;
-      }
-
-      return `${enteroNumerico},${String(decimalNumerico).padStart(2, '0')}`;
-    },
+    conSeparadorContextual,
+    (coincidencia, prefijo: string, parteEntera: string, parteDecimal: string) =>
+      reemplazar(coincidencia, `${prefijo} `, parteEntera, parteDecimal),
   );
 
-  // Chrome/Android puede mezclar palabras y cifras, por ejemplo
-  // "uno con 80 por metro". Ese patrón sigue siendo un precio hablado.
-  const conSeparadorMixto = new RegExp(
-    `\\b(${entero}|[0-9])\\s+(?:con|coma)\\s+(\\d{1,2})${contextoPrecio}`,
+  const sinSeparadorContextual = new RegExp(
+    `\\b(a|precio)\\s+(${entero})\\s+(${fraccion})(?=\\s+${unidadPrecio}\\b)`,
     'giu',
   );
 
   resultado = resultado.replace(
-    conSeparadorMixto,
-    (coincidencia, parteEntera: string, parteDecimal: string) => {
-      const enteroNumerico = /^\d$/u.test(parteEntera)
-        ? Number(parteEntera)
-        : parsearNumeroEspanol(parteEntera);
-      const decimalNumerico = Number(parteDecimal);
-
-      if (
-        enteroNumerico === null ||
-        !Number.isInteger(decimalNumerico) ||
-        decimalNumerico < 0 ||
-        decimalNumerico > 99
-      ) {
-        return coincidencia;
-      }
-
-      return `${enteroNumerico},${String(decimalNumerico).padStart(2, '0')}`;
-    },
+    sinSeparadorContextual,
+    (coincidencia, prefijo: string, parteEntera: string, parteDecimal: string) =>
+      reemplazar(coincidencia, `${prefijo} `, parteEntera, parteDecimal),
   );
 
-  const sinSeparador = new RegExp(
-    `\\b(${entero})\\s+((?:diez|once|doce|trece|catorce|quince|dieciseis|dieciséis|diecisiete|dieciocho|diecinueve|veinte|veintiuno|veintiun|veintiún|veintiuna|veintidos|veintidós|veintitres|veintitrés|veinticuatro|veinticinco|veintiseis|veintiséis|veintisiete|veintiocho|veintinueve|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa)(?:\\s+y\\s+(?:un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve))?)${contextoPrecio}`,
-    'giu',
+  // Si toda la frase es solamente un precio, no hace falta el prefijo "a".
+  const conSeparadorSolo = new RegExp(
+    `^\\s*(${entero})\\s+(?:con|coma)\\s+(${fraccion})\\s+(${unidadPrecioSolo})\\s*[.!]?\\s*$`,
+    'iu',
   );
 
   resultado = resultado.replace(
-    sinSeparador,
-    (coincidencia, parteEntera: string, parteDecimal: string) => {
-      const enteroNumerico = parsearNumeroEspanol(parteEntera);
-      const decimalNumerico = parsearFraccionPrecio(parteDecimal);
+    conSeparadorSolo,
+    (coincidencia, parteEntera: string, parteDecimal: string, unidad: string) => {
+      const enteroNumerico = parsearEntero(parteEntera);
+      const decimalCanonico = normalizarFraccionPrecio(parteDecimal);
 
-      if (enteroNumerico === null || decimalNumerico === null) {
+      if (enteroNumerico === null || decimalCanonico === null) {
         return coincidencia;
       }
 
-      return `${enteroNumerico},${String(decimalNumerico).padStart(2, '0')}`;
+      return `${enteroNumerico},${decimalCanonico} ${unidad}`;
+    },
+  );
+
+  const sinSeparadorSolo = new RegExp(
+    `^\\s*(${entero})\\s+(${fraccion})\\s+(${unidadPrecioSolo})\\s*[.!]?\\s*$`,
+    'iu',
+  );
+
+  resultado = resultado.replace(
+    sinSeparadorSolo,
+    (coincidencia, parteEntera: string, parteDecimal: string, unidad: string) => {
+      const enteroNumerico = parsearEntero(parteEntera);
+      const decimalCanonico = normalizarFraccionPrecio(parteDecimal);
+
+      if (enteroNumerico === null || decimalCanonico === null) {
+        return coincidencia;
+      }
+
+      return `${enteroNumerico},${decimalCanonico} ${unidad}`;
     },
   );
 
@@ -260,23 +336,46 @@ function normalizarNumerosEnPalabras(texto: string): string {
   );
 }
 
+function normalizarSeparadoresDecimalesGenerales(texto: string): string {
+  // Decimales de medidas/cantidades que no son precios. Se limita a cifras
+  // ya reconocidas para no reinterpretar lenguaje libre.
+  return texto
+    .replace(/\b(\d+)\s+coma\s+(\d{1,3})\b/giu, '$1,$2')
+    .replace(
+      /\b(\d+)\s+con\s+(\d{1,3})\b(?=\s+(?:mm|mil[ií]metros?|m|metros?|kg|kilos?|kilogramos?)\b)/giu,
+      '$1,$2',
+    );
+}
+
 function normalizarDecimalesNumericos(texto: string): string {
   return texto.replace(/\b(\d+)\.(\d{1,3})\b/gu, '$1,$2');
 }
 
 function normalizarPrecioCompactado(texto: string): string {
-  // SpeechRecognition suele convertir "uno cuarenta" en "140".
-  // No se modifica cualquier número de tres cifras seguido de kg: "200 kg"
-  // puede ser perfectamente una cantidad. La corrección exige una señal de
-  // precio ("a"/"precio") o que toda la frase sea sólo el precio.
+  // SpeechRecognition puede compactar precios hablados:
+  // "uno cuarenta" -> 140   => 1,400
+  // "uno cuatro veinticinco" -> 1425 => 1,425
+  // La corrección sólo se hace en contexto explícito de precio para no tocar
+  // cantidades legítimas como "200 kg de recortes".
+  const contextoUnidad =
+    '(?=\\s+(?:(?:el\\s+)?(?:kilo|kilos|kg|kilogramo|kilogramos)|(?:por\\s+)?(?:metro|metros|m)|(?:cada\\s+(?:una|uno)|por\\s+unidad|unidad|und))\\b)';
+
   let resultado = texto.replace(
-    /\b(a|precio)\s+([1-9])(\d{2})\b(?=\s+(?:(?:el\s+)?(?:kilo|kilos|kg|kilogramo|kilogramos)|(?:por\s+)?(?:metro|metros|m))\b)/giu,
-    '$1 $2,$3',
+    new RegExp(
+      `\\b(a|precio)\\s+([0-9])(\\d{2,3})\\b${contextoUnidad}`,
+      'giu',
+    ),
+    (_coincidencia, prefijo: string, entero: string, decimales: string) =>
+      `${prefijo} ${entero},${decimales.padEnd(3, '0')}`,
   );
 
   resultado = resultado.replace(
-    /^\s*([1-9])(\d{2})\s+((?:el\s+)?(?:kilo|kilos|kg|kilogramo|kilogramos)|(?:por\s+)?(?:metro|metros|m))\s*[.!]?\s*$/iu,
-    '$1,$2 $3',
+    new RegExp(
+      `^\\s*([0-9])(\\d{2,3})\\s+((?:(?:el\\s+)?(?:kilo|kilos|kg|kilogramo|kilogramos)|(?:por\\s+)?(?:metro|metros|m)|(?:cada\\s+(?:una|uno)|por\\s+unidad|unidad|und)))\\s*[.!]?\\s*$`,
+      'iu',
+    ),
+    (_coincidencia, entero: string, decimales: string, unidad: string) =>
+      `${entero},${decimales.padEnd(3, '0')} ${unidad}`,
   );
 
   return resultado;
@@ -344,7 +443,7 @@ function normalizarUnidadesPrecio(texto: string): string {
 
   resultado = resultado.replace(
     new RegExp(
-      `^\\s*${precio}\\s+(?:(?:el|por)\\s+)?kg\\s*[.!]?\\s*$`,
+      `^\\s*${precio}\\s+(?:el|por)\\s+kg\\s*[.!]?\\s*$`,
       'iu',
     ),
     (_coincidencia, valor: string) => `${formatearPrecioCanonico(valor)}/kg`,
@@ -352,7 +451,7 @@ function normalizarUnidadesPrecio(texto: string): string {
 
   resultado = resultado.replace(
     new RegExp(
-      `^\\s*${precio}\\s+(?:(?:el|por)\\s+)?m\\s*[.!]?\\s*$`,
+      `^\\s*${precio}\\s+(?:el|por)\\s+m\\s*[.!]?\\s*$`,
       'iu',
     ),
     (_coincidencia, valor: string) => `${formatearPrecioCanonico(valor)}/m`,
@@ -370,6 +469,20 @@ function normalizarUnidadesPrecio(texto: string): string {
   );
 
   return resultado;
+}
+
+function normalizarPrecisionFinalPrecios(texto: string): string {
+  // Última barrera de consistencia: cualquier precio que ya tenga unidad
+  // canónica termina siempre con coma y exactamente tres decimales.
+  // También elimina un eventual "$" residual del reconocimiento.
+  return texto.replace(
+    /(?:\$\s*)?(\d+)(?:,(\d{1,3}))?\/(kg|m|und)\b/giu,
+    (_coincidencia, entero: string, decimales = '', unidad: string) => {
+      const unidadCanonica =
+        unidad.toLocaleLowerCase('es-AR') === 'und' ? 'Und' : unidad.toLocaleLowerCase('es-AR');
+      return `${entero},${decimales.padEnd(3, '0')}/${unidadCanonica}`;
+    },
+  );
 }
 
 function normalizarEspesor(texto: string): string {
@@ -410,7 +523,7 @@ function limpiarEspacios(texto: string): string {
 }
 
 /**
- * ETAPA 2.3: normalización lingüística determinística.
+ * ETAPA 2.4: normalización lingüística determinística.
  *
  * Convención de precios: coma como separador decimal y tres decimales
  * canónicos (por ejemplo 1,400/kg, 1,800/m y 50,000/Und).
@@ -427,10 +540,12 @@ export function normalizeVoiceText(text: string): string {
   resultado = normalizarTerminosReconocidos(resultado);
   resultado = normalizarPreciosHablados(resultado);
   resultado = normalizarNumerosEnPalabras(resultado);
+  resultado = normalizarSeparadoresDecimalesGenerales(resultado);
   resultado = normalizarDecimalesNumericos(resultado);
   resultado = normalizarPrecioCompactado(resultado);
   resultado = normalizarUnidades(resultado);
   resultado = normalizarUnidadesPrecio(resultado);
+  resultado = normalizarPrecisionFinalPrecios(resultado);
   resultado = normalizarMediosMetros(resultado);
   resultado = normalizarEspesor(resultado);
   resultado = normalizarDimensiones(resultado);
