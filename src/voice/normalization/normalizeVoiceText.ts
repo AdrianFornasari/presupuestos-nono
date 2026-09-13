@@ -310,6 +310,17 @@ function normalizarUnidades(texto: string): string {
     .replace(/\bmetros?\b/giu, 'm');
 }
 
+function formatearPrecioCanonico(valor: string): string {
+  const limpio = valor.replace(/\$/gu, '').replace(/\s+/gu, '');
+  const [entero, decimales = ''] = limpio.split(',');
+
+  if (!entero || !/^\d+$/u.test(entero) || !/^\d{0,2}$/u.test(decimales)) {
+    return limpio;
+  }
+
+  return `${entero},${decimales.padEnd(2, '0')}`;
+}
+
 function normalizarUnidadesPrecio(texto: string): string {
   const precio = '(\\$?\\s*\\d+(?:,\\d{1,2})?)';
 
@@ -319,7 +330,7 @@ function normalizarUnidadesPrecio(texto: string): string {
       'giu',
     ),
     (_coincidencia, prefijo: string, valor: string) =>
-      `${prefijo} ${valor.replace(/\s+/gu, '')}/kg`,
+      `${prefijo} ${formatearPrecioCanonico(valor)}/kg`,
   );
 
   resultado = resultado.replace(
@@ -328,7 +339,7 @@ function normalizarUnidadesPrecio(texto: string): string {
       'giu',
     ),
     (_coincidencia, prefijo: string, valor: string) =>
-      `${prefijo} ${valor.replace(/\s+/gu, '')}/m`,
+      `${prefijo} ${formatearPrecioCanonico(valor)}/m`,
   );
 
   resultado = resultado.replace(
@@ -336,7 +347,7 @@ function normalizarUnidadesPrecio(texto: string): string {
       `^\\s*${precio}\\s+(?:(?:el|por)\\s+)?kg\\s*[.!]?\\s*$`,
       'iu',
     ),
-    (_coincidencia, valor: string) => `${valor.replace(/\s+/gu, '')}/kg`,
+    (_coincidencia, valor: string) => `${formatearPrecioCanonico(valor)}/kg`,
   );
 
   resultado = resultado.replace(
@@ -344,7 +355,7 @@ function normalizarUnidadesPrecio(texto: string): string {
       `^\\s*${precio}\\s+(?:(?:el|por)\\s+)?m\\s*[.!]?\\s*$`,
       'iu',
     ),
-    (_coincidencia, valor: string) => `${valor.replace(/\s+/gu, '')}/m`,
+    (_coincidencia, valor: string) => `${formatearPrecioCanonico(valor)}/m`,
   );
 
   // Para productos por unidad (por ejemplo Mallas), "cada una" expresa la
@@ -355,7 +366,7 @@ function normalizarUnidadesPrecio(texto: string): string {
       'giu',
     ),
     (_coincidencia, prefijo: string, valor: string) =>
-      `${prefijo} ${valor.replace(/\s+/gu, '')}/Und`,
+      `${prefijo} ${formatearPrecioCanonico(valor)}/Und`,
   );
 
   return resultado;
