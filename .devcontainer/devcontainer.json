@@ -1,0 +1,16 @@
+{
+ "name": "Node development",
+ "image": "mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm",
+ "postCreateCommand": "npm install",
+ "forwardPorts": [3000, 5173],
+ "portsAttributes": {
+ "3000": {
+ "label": "Next.js / React app",
+ "onAutoForward": "openPreview"
+ },
+ "5173": {
+ "label": "Vite app",
+ "onAutoForward": "openPreview"
+ }
+ }
+}
