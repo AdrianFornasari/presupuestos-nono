@@ -4,6 +4,7 @@ import {
   useState,
 } from 'react';
 import type { SpeechToTextProvider } from '../contracts/SpeechToTextProvider';
+import { normalizeVoiceText } from '../normalization/normalizeVoiceText';
 import type {
   SpeechToTextError,
   VoiceCaptureStatus,
@@ -64,6 +65,7 @@ function VoiceCapturePanel({
   const mountedRef = useRef(true);
 
   const supported = provider.isSupported();
+  const normalizedText = normalizeVoiceText(finalText);
   const visibleTranscript = [
     finalText.trim(),
     interimText.trim(),
@@ -248,15 +250,16 @@ function VoiceCapturePanel({
             fontSize: '0.85rem',
           }}
         >
-          Etapa 1.1 · transcripción por turno
+          Etapa 2 · normalización
         </span>
       </div>
 
       <p className="empty-text">
         El micrófono convierte un dictado en una única transcripción.
-        Los resultados parciales se muestran mientras hablás, pero
-        sólo la transcripción final se registra. En esta etapa no
-        interpreta productos ni modifica el presupuesto.
+        Se conserva el texto original y se genera una segunda versión
+        normalizada para unificar números, medidas, precios y algunos
+        errores conocidos del reconocimiento. Todavía no interpreta
+        productos ni modifica el presupuesto.
       </p>
 
       {!supported && (
@@ -330,7 +333,7 @@ function VoiceCapturePanel({
       )}
 
       <label className="field-label">
-        Texto reconocido
+        Texto reconocido (original)
         <textarea
           className="text-area"
           rows={5}
@@ -348,6 +351,20 @@ function VoiceCapturePanel({
       )}
 
       {finalText && status === 'result' && (
+        <label className="field-label">
+          Texto normalizado
+          <textarea
+            className="text-area"
+            rows={5}
+            readOnly
+            value={normalizedText}
+            placeholder="La versión normalizada aparecerá aquí..."
+            style={{ whiteSpace: 'pre-wrap' }}
+          />
+        </label>
+      )}
+
+      {finalText && status === 'result' && (
         <div
           style={{
             marginTop: '16px',
@@ -356,7 +373,7 @@ function VoiceCapturePanel({
           }}
         >
           <strong>
-            ¿La transcripción fue correcta?
+            ¿La transcripción original fue correcta?
           </strong>
 
           <div
@@ -436,10 +453,10 @@ function VoiceCapturePanel({
         className="empty-text"
         style={{ marginTop: '16px' }}
       >
-        Pruebas sugeridas: Perfil C · Perfil U · IPN · IPE ·
-        doble T · ángulo · planchuela · chapa · tubo · caño ·
-        galvanizada · trapezoidal · acanalada · números,
-        medidas y precios decimales.
+        Pruebas sugeridas: IPE · IPN/ypn · malla/maya/Masha ·
+        100 por 50 por 2 · uno cuarenta el kilo · uno con
+        cuarenta el kilo · 1.40 el kilo · seis metros y medio ·
+        frases completas de perfiles, tubos y chapas.
       </p>
     </div>
   );
