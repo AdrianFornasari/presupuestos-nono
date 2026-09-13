@@ -148,7 +148,7 @@ function VoiceCapturePanel({
       },
       {
         language: 'es-AR',
-        continuous: true,
+        continuous: false,
         interimResults: true,
       },
     );
@@ -248,14 +248,15 @@ function VoiceCapturePanel({
             fontSize: '0.85rem',
           }}
         >
-          Etapa 1 · sólo transcripción
+          Etapa 1.1 · transcripción por turno
         </span>
       </div>
 
       <p className="empty-text">
-        El micrófono sólo convierte voz en texto. En esta
-        etapa no interpreta productos ni modifica el
-        presupuesto.
+        El micrófono convierte un dictado en una única transcripción.
+        Los resultados parciales se muestran mientras hablás, pero
+        sólo la transcripción final se registra. En esta etapa no
+        interpreta productos ni modifica el presupuesto.
       </p>
 
       {!supported && (

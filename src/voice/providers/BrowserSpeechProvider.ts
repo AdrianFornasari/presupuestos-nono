@@ -207,6 +207,7 @@ export class BrowserSpeechProvider implements SpeechToTextProvider {
           ? (error as SpeechToTextError)
           : crearErrorReconocimiento('audio-capture');
 
+      this.handlers = null;
       handlers.onError(speechError);
       return;
     }
@@ -214,7 +215,7 @@ export class BrowserSpeechProvider implements SpeechToTextProvider {
     const recognition = new SpeechRecognitionConstructor();
 
     recognition.lang = options.language ?? 'es-AR';
-    recognition.continuous = options.continuous ?? true;
+    recognition.continuous = options.continuous ?? false;
     recognition.interimResults = options.interimResults ?? true;
     recognition.maxAlternatives = 1;
 
@@ -223,24 +224,23 @@ export class BrowserSpeechProvider implements SpeechToTextProvider {
     };
 
     recognition.onresult = (event) => {
-      let finalText = '';
-      let interimText = '';
-
-      for (let index = 0; index < event.results.length; index += 1) {
-        const result = event.results[index];
-        const transcript = result[0]?.transcript?.trim() ?? '';
-
-        if (!transcript) continue;
-
-        if (result.isFinal) {
-          finalText = `${finalText} ${transcript}`.trim();
-        } else {
-          interimText = `${interimText} ${transcript}`.trim();
-        }
+      if (event.results.length === 0) {
+        return;
       }
 
-      this.finalText = finalText;
-      this.interimText = interimText;
+      const latestResult = event.results[event.results.length - 1];
+      const transcript = latestResult[0]?.transcript?.trim() ?? '';
+
+      if (!transcript) {
+        return;
+      }
+
+      if (latestResult.isFinal) {
+        this.finalText = transcript;
+        this.interimText = '';
+      } else {
+        this.interimText = transcript;
+      }
 
       this.handlers?.onUpdate({
         finalText: this.finalText,
@@ -257,13 +257,7 @@ export class BrowserSpeechProvider implements SpeechToTextProvider {
     };
 
     recognition.onend = () => {
-      const textoFinal = [
-        this.finalText.trim(),
-        this.interimText.trim(),
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .trim();
+      const textoFinal = this.finalText.trim();
 
       const currentHandlers = this.handlers;
       const endedWithError = this.endedWithError;
