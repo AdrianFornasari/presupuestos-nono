@@ -5,6 +5,8 @@ import {
 } from 'react';
 import type { SpeechToTextProvider } from '../contracts/SpeechToTextProvider';
 import { normalizeVoiceText } from '../normalization/normalizeVoiceText';
+import { parsePerfilCVoiceCommand } from '../parsers/perfilCVoiceParser';
+import { parseTuboVoiceCommand } from '../parsers/tuboVoiceParser';
 import { identifyVoiceProduct } from '../products/productVoiceDictionary';
 import type {
   SpeechToTextError,
@@ -68,6 +70,8 @@ function VoiceCapturePanel({
   const supported = provider.isSupported();
   const normalizedText = normalizeVoiceText(finalText);
   const productIdentification = identifyVoiceProduct(normalizedText);
+  const perfilCParseResult = parsePerfilCVoiceCommand(normalizedText);
+  const tuboParseResult = parseTuboVoiceCommand(normalizedText);
   const visibleTranscript = [
     finalText.trim(),
     interimText.trim(),
@@ -252,16 +256,17 @@ function VoiceCapturePanel({
             fontSize: '0.85rem',
           }}
         >
-          Etapa 3 · identificación
+          Etapa 4 · Perfil C y tubos
         </span>
       </div>
 
       <p className="empty-text">
         El micrófono convierte un dictado en una única transcripción.
-        Se conserva el texto original, se genera una versión normalizada
-        y se identifica la familia de producto contra el catálogo real de
-        la aplicación. Todavía no extrae medidas, cantidades ni precios
-        estructurados y no modifica el presupuesto.
+        Se conserva el texto original y su versión normalizada. Para Perfil C
+        y tubos, esta etapa extrae cantidad, medidas, espesor, largo y precio.
+        Perfil C busca la variante exacta en la tabla maestra; los tubos dejan
+        los datos listos para la calculadora existente. No calcula peso,
+        subtotal ni importe y todavía no agrega productos al presupuesto.
       </p>
 
       {!supported && (
@@ -420,6 +425,252 @@ function VoiceCapturePanel({
         </div>
       )}
 
+      {finalText &&
+        status === 'result' &&
+        perfilCParseResult.status !== 'not-applicable' &&
+        perfilCParseResult.data && (
+          <div
+            style={{
+              border: '1px solid currentColor',
+              borderRadius: '12px',
+              padding: '12px',
+              marginTop: '12px',
+              marginBottom: '14px',
+            }}
+          >
+            <strong>Etapa 4 · Datos estructurados de Perfil C</strong>
+
+            <div style={{ marginTop: '10px', display: 'grid', gap: '6px' }}>
+              <div>
+                Cantidad:{' '}
+                <strong>
+                  {perfilCParseResult.data.quantity ?? 'faltante'}
+                </strong>
+              </div>
+
+              <div>
+                Medidas:{' '}
+                <strong>
+                  {perfilCParseResult.data.heightMm !== undefined &&
+                  perfilCParseResult.data.flangeMm !== undefined &&
+                  perfilCParseResult.data.lipMm !== undefined
+                    ? `${perfilCParseResult.data.heightMm} x ${perfilCParseResult.data.flangeMm} x ${perfilCParseResult.data.lipMm} mm`
+                    : 'faltantes'}
+                </strong>
+              </div>
+
+              <div>
+                Espesor:{' '}
+                <strong>
+                  {perfilCParseResult.data.thicknessMm !== undefined
+                    ? `${perfilCParseResult.data.thicknessMm} mm`
+                    : 'faltante'}
+                </strong>
+              </div>
+
+              <div>
+                Largo:{' '}
+                <strong>
+                  {perfilCParseResult.data.lengthM} m
+                </strong>{' '}
+                <span className="empty-text">
+                  ({perfilCParseResult.data.lengthSource === 'default'
+                    ? 'predeterminado'
+                    : 'dictado'})
+                </span>
+              </div>
+
+              <div>
+                Precio:{' '}
+                <strong>
+                  {perfilCParseResult.data.price !== undefined
+                    ? `${perfilCParseResult.data.price
+                        .toFixed(3)
+                        .replace('.', ',')}/kg`
+                    : 'faltante'}
+                </strong>
+              </div>
+
+              <div>
+                Variante de tabla:{' '}
+                <strong>
+                  {perfilCParseResult.data.productDescription ??
+                    'sin coincidencia exacta todavía'}
+                </strong>
+              </div>
+
+              {perfilCParseResult.data.productId && (
+                <div className="empty-text">
+                  ID de producto: {perfilCParseResult.data.productId}
+                </div>
+              )}
+            </div>
+
+            {perfilCParseResult.status === 'matched' && (
+              <div className="message-box" style={{ marginTop: '12px' }}>
+                Perfil C interpretado completamente y vinculado a una variante
+                real de la tabla maestra. Todavía no se agrega al presupuesto.
+              </div>
+            )}
+
+            {perfilCParseResult.missingFields.length > 0 && (
+              <div className="empty-text" style={{ marginTop: '10px' }}>
+                Faltan datos: {perfilCParseResult.missingFields
+                  .map((field) => {
+                    if (field === 'quantity') return 'cantidad';
+                    if (field === 'heightMm') return 'alto';
+                    if (field === 'flangeMm') return 'ala';
+                    if (field === 'lipMm') return 'labio';
+                    if (field === 'thicknessMm') return 'espesor';
+                    return 'precio USD/kg';
+                  })
+                  .join(' · ')}.
+              </div>
+            )}
+
+            {perfilCParseResult.issues.map((issue) => (
+              <div
+                key={issue}
+                className="message-box"
+                style={{ marginTop: '10px' }}
+              >
+                {issue}
+              </div>
+            ))}
+          </div>
+        )}
+
+      {finalText &&
+        status === 'result' &&
+        tuboParseResult.status !== 'not-applicable' &&
+        tuboParseResult.data && (
+          <div
+            style={{
+              border: '1px solid currentColor',
+              borderRadius: '12px',
+              padding: '12px',
+              marginTop: '12px',
+              marginBottom: '14px',
+            }}
+          >
+            <strong>Etapa 4 · Datos estructurados de tubos</strong>
+
+            <div style={{ marginTop: '10px', display: 'grid', gap: '6px' }}>
+              <div>
+                Producto:{' '}
+                <strong>{tuboParseResult.data.canonicalType}</strong>
+              </div>
+
+              <div>
+                Cantidad:{' '}
+                <strong>{tuboParseResult.data.quantity ?? 'faltante'}</strong>
+              </div>
+
+              {tuboParseResult.data.canonicalType === 'Tubo redondo' && (
+                <div>
+                  Diámetro exterior:{' '}
+                  <strong>
+                    {tuboParseResult.data.diameterMm !== undefined
+                      ? `${tuboParseResult.data.diameterMm} mm`
+                      : 'faltante'}
+                  </strong>
+                </div>
+              )}
+
+              {tuboParseResult.data.canonicalType === 'Tubo cuadrado' && (
+                <div>
+                  Lado exterior:{' '}
+                  <strong>
+                    {tuboParseResult.data.sideMm !== undefined
+                      ? `${tuboParseResult.data.sideMm} mm`
+                      : 'faltante'}
+                  </strong>
+                </div>
+              )}
+
+              {tuboParseResult.data.canonicalType === 'Tubo rectangular' && (
+                <div>
+                  Medidas exteriores:{' '}
+                  <strong>
+                    {tuboParseResult.data.widthMm !== undefined &&
+                    tuboParseResult.data.heightMm !== undefined
+                      ? `${tuboParseResult.data.widthMm} x ${tuboParseResult.data.heightMm} mm`
+                      : 'faltantes'}
+                  </strong>
+                </div>
+              )}
+
+              <div>
+                Espesor:{' '}
+                <strong>
+                  {tuboParseResult.data.thicknessMm !== undefined
+                    ? `${tuboParseResult.data.thicknessMm} mm`
+                    : 'faltante'}
+                </strong>
+              </div>
+
+              <div>
+                Largo:{' '}
+                <strong>{tuboParseResult.data.lengthM} m</strong>{' '}
+                <span className="empty-text">
+                  ({tuboParseResult.data.lengthSource === 'default'
+                    ? 'predeterminado'
+                    : 'dictado'})
+                </span>
+              </div>
+
+              <div>
+                Precio:{' '}
+                <strong>
+                  {tuboParseResult.data.price !== undefined
+                    ? `${tuboParseResult.data.price
+                        .toFixed(3)
+                        .replace('.', ',')}/kg`
+                    : 'faltante'}
+                </strong>
+              </div>
+
+              <div className="empty-text">
+                Calculadora: {tuboParseResult.data.calculatorShape}
+              </div>
+            </div>
+
+            {tuboParseResult.status === 'matched' && (
+              <div className="message-box" style={{ marginTop: '12px' }}>
+                Tubo interpretado completamente. Los datos quedaron listos
+                para reutilizar la calculadora de metales existente. Todavía
+                no se calcula peso ni se agrega el producto al presupuesto.
+              </div>
+            )}
+
+            {tuboParseResult.missingFields.length > 0 && (
+              <div className="empty-text" style={{ marginTop: '10px' }}>
+                Faltan datos: {tuboParseResult.missingFields
+                  .map((field) => {
+                    if (field === 'quantity') return 'cantidad';
+                    if (field === 'diameterMm') return 'diámetro exterior';
+                    if (field === 'sideMm') return 'lado exterior';
+                    if (field === 'widthMm') return 'ancho exterior';
+                    if (field === 'heightMm') return 'alto exterior';
+                    if (field === 'thicknessMm') return 'espesor';
+                    return 'precio USD/kg';
+                  })
+                  .join(' · ')}.
+              </div>
+            )}
+
+            {tuboParseResult.issues.map((issue) => (
+              <div
+                key={issue}
+                className="message-box"
+                style={{ marginTop: '10px' }}
+              >
+                {issue}
+              </div>
+            ))}
+          </div>
+        )}
+
       {finalText && status === 'result' && (
         <div
           style={{
@@ -509,10 +760,12 @@ function VoiceCapturePanel({
         className="empty-text"
         style={{ marginTop: '16px' }}
       >
-        Pruebas sugeridas: perfil C · canal C · perfil U · IPE · IPN ·
-        malla · caño redondo · tubo cuadrado · chapa trapezoidal ·
-        planchuela · recortes. Probá también términos ambiguos como
-        chapa, tubo y doble T: la aplicación no debe adivinar.
+        Pruebas sugeridas: 10 perfiles C 100 x 50 x 15 espesor 2 mm a
+        1,400/kg · 5 tubos cuadrados de 50 x 50 x 2, largo 12 m, a
+        1,500/kg · 4 tubos rectangulares de 100 x 50 x 2, largo 6 m, a
+        1,650/kg · 3 tubos redondos de 60 x 2, largo 6 m, a 1,700/kg.
+        La voz sólo estructura los datos; el peso sigue siendo responsabilidad
+        de la lógica determinística existente.
       </p>
     </div>
   );

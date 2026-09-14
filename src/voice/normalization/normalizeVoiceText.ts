@@ -416,6 +416,7 @@ function normalizarTerminosReconocidos(texto: string): string {
         ? 'perfiles U'
         : 'perfil U',
     )
+    .replace(/\bdoble\s+t\s*(?=\d)/giu, 'doble T ')
     .replace(/\bdoble\s+t\b/giu, 'doble T');
 }
 
@@ -541,7 +542,7 @@ function limpiarEspacios(texto: string): string {
 }
 
 /**
- * ETAPA 2.5: normalización lingüística determinística.
+ * ETAPA 3.1: robustez de normalización para identificación de productos.
  *
  * Convención de precios: coma como separador decimal y tres decimales
  * canónicos (por ejemplo 1,400/kg, 1,800/m y 50,000/Und).
