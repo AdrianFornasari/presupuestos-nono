@@ -594,3 +594,22 @@ export const PRODUCTOS_PROVEEDOR: ProductoProveedor[] = [
     tipoCalculo: "plancha",
   },
 ];
+
+// Tipos de producto que forman parte del flujo estable de la aplicación,
+// pero no tienen una lista de subproductos en la tabla del proveedor.
+// Se exportan desde este módulo para que el editor manual y la entrada por voz
+// compartan una única definición y no creen catálogos paralelos.
+export const TIPOS_SOLO_CALCULADORA = [
+  'Tubo redondo',
+  'Tubo cuadrado',
+  'Tubo rectangular',
+] as const;
+
+export const TIPOS_SOLO_PESO_MANUAL = ['Recortes'] as const;
+export const TIPOS_SOLO_UNIDAD = ['Mallas'] as const;
+
+export const TIPOS_PRODUCTO_ESPECIALES = [
+  ...TIPOS_SOLO_CALCULADORA,
+  ...TIPOS_SOLO_PESO_MANUAL,
+  ...TIPOS_SOLO_UNIDAD,
+] as const;

@@ -5,6 +5,7 @@ import {
 } from 'react';
 import type { SpeechToTextProvider } from '../contracts/SpeechToTextProvider';
 import { normalizeVoiceText } from '../normalization/normalizeVoiceText';
+import { identifyVoiceProduct } from '../products/productVoiceDictionary';
 import type {
   SpeechToTextError,
   VoiceCaptureStatus,
@@ -66,6 +67,7 @@ function VoiceCapturePanel({
 
   const supported = provider.isSupported();
   const normalizedText = normalizeVoiceText(finalText);
+  const productIdentification = identifyVoiceProduct(normalizedText);
   const visibleTranscript = [
     finalText.trim(),
     interimText.trim(),
@@ -250,16 +252,16 @@ function VoiceCapturePanel({
             fontSize: '0.85rem',
           }}
         >
-          Etapa 2 · normalización
+          Etapa 3 · identificación
         </span>
       </div>
 
       <p className="empty-text">
         El micrófono convierte un dictado en una única transcripción.
-        Se conserva el texto original y se genera una segunda versión
-        normalizada para unificar números, medidas, precios y algunos
-        errores conocidos del reconocimiento. Todavía no interpreta
-        productos ni modifica el presupuesto.
+        Se conserva el texto original, se genera una versión normalizada
+        y se identifica la familia de producto contra el catálogo real de
+        la aplicación. Todavía no extrae medidas, cantidades ni precios
+        estructurados y no modifica el presupuesto.
       </p>
 
       {!supported && (
@@ -367,6 +369,60 @@ function VoiceCapturePanel({
       {finalText && status === 'result' && (
         <div
           style={{
+            border: '1px solid currentColor',
+            borderRadius: '12px',
+            padding: '12px',
+            marginTop: '12px',
+            marginBottom: '14px',
+          }}
+        >
+          <strong>Identificación de producto</strong>
+
+          {productIdentification.status === 'matched' && (
+            <div style={{ marginTop: '8px' }}>
+              <div>
+                Producto: <strong>{productIdentification.canonicalType}</strong>
+              </div>
+
+              {productIdentification.source === 'master' ? (
+                productIdentification.exactProductId ? (
+                  <div className="empty-text" style={{ marginTop: '6px' }}>
+                    Coincidencia única en tabla maestra: {productIdentification.exactProductId}.
+                  </div>
+                ) : (
+                  <div className="empty-text" style={{ marginTop: '6px' }}>
+                    Familia encontrada en tabla maestra: {productIdentification.candidateProductIds.length} variantes candidatas.
+                    La variante exacta se resolverá en la Etapa 4.
+                  </div>
+                )
+              ) : (
+                <div className="empty-text" style={{ marginTop: '6px' }}>
+                  Producto especial del flujo estable, sin subproducto de tabla.
+                </div>
+              )}
+            </div>
+          )}
+
+          {productIdentification.status === 'ambiguous' && (
+            <div style={{ marginTop: '8px' }}>
+              <div>Producto ambiguo.</div>
+              <div className="empty-text" style={{ marginTop: '6px' }}>
+                Posibles familias: {productIdentification.canonicalTypes.join(' · ')}.
+              </div>
+            </div>
+          )}
+
+          {productIdentification.status === 'not-found' && (
+            <div className="empty-text" style={{ marginTop: '8px' }}>
+              No se identificó una familia de producto conocida.
+            </div>
+          )}
+        </div>
+      )}
+
+      {finalText && status === 'result' && (
+        <div
+          style={{
             marginTop: '16px',
             paddingTop: '16px',
             borderTop: '1px solid rgba(128, 128, 128, 0.5)',
@@ -453,10 +509,10 @@ function VoiceCapturePanel({
         className="empty-text"
         style={{ marginTop: '16px' }}
       >
-        Pruebas sugeridas: IPE · IPN/ypn · malla/maya/Masha ·
-        100 por 50 por 2 · uno cuarenta el kilo · uno con
-        cuarenta el kilo · 1.40 el kilo · seis metros y medio ·
-        frases completas de perfiles, tubos y chapas.
+        Pruebas sugeridas: perfil C · canal C · perfil U · IPE · IPN ·
+        malla · caño redondo · tubo cuadrado · chapa trapezoidal ·
+        planchuela · recortes. Probá también términos ambiguos como
+        chapa, tubo y doble T: la aplicación no debe adivinar.
       </p>
     </div>
   );

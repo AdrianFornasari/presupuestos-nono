@@ -41,7 +41,12 @@ import type {
   Presupuesto,
   TipoCalculoLinea,
 } from './types/presupuesto';
-import { PRODUCTOS_PROVEEDOR } from './data/productosProveedor';
+import {
+  PRODUCTOS_PROVEEDOR,
+  TIPOS_SOLO_CALCULADORA,
+  TIPOS_SOLO_PESO_MANUAL,
+  TIPOS_SOLO_UNIDAD,
+} from './data/productosProveedor';
 import {
   formatearDecimal2SinMiles,
   formatearDecimal4,
@@ -83,14 +88,6 @@ type MetodoIngresoProducto =
   | 'manual-peso'
   | 'manual-unidad';
 
-const TIPOS_SOLO_CALCULADORA = [
-  'Tubo redondo',
-  'Tubo cuadrado',
-  'Tubo rectangular',
-] as const;
-
-const TIPOS_SOLO_PESO_MANUAL = ['Recortes'] as const;
-const TIPOS_SOLO_UNIDAD = ['Mallas'] as const;
 
 function esTipoSoloCalculadora(tipo: string): boolean {
   return (TIPOS_SOLO_CALCULADORA as readonly string[]).includes(tipo);

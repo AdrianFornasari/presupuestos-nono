@@ -222,6 +222,24 @@ function normalizarFraccionPrecio(fraccion: string): string | null {
   return parsed.padEnd(3, '0');
 }
 
+
+function normalizarPrefijoPrecioPegado(texto: string): string {
+  // SpeechRecognition a veces elimina el espacio después de la preposición
+  // de precio: "a uno ochocientos" puede llegar como "a1 800".
+  // Sólo se corrige cuando inmediatamente después hay una unidad inequívoca
+  // de precio, para no alterar códigos, medidas ni otras cadenas alfanuméricas.
+  const unidadPrecio =
+    '(?:(?:el\\s+|por\\s+)?(?:kilo|kilos|kg|kilogramo|kilogramos)|(?:por\\s+)?(?:metro|metros|m)|(?:cada\\s+(?:una|uno)|por\\s+unidad|unidad|und))';
+
+  return texto.replace(
+    new RegExp(
+      `\\b(a|precio)(?=\\d\\s+\\d{1,3}\\s+${unidadPrecio}\\b)`,
+      'giu',
+    ),
+    '$1 ',
+  );
+}
+
 function normalizarPreciosHablados(texto: string): string {
   const entero =
     '(?:cero|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|[0-9])';
@@ -523,7 +541,7 @@ function limpiarEspacios(texto: string): string {
 }
 
 /**
- * ETAPA 2.4: normalización lingüística determinística.
+ * ETAPA 2.5: normalización lingüística determinística.
  *
  * Convención de precios: coma como separador decimal y tres decimales
  * canónicos (por ejemplo 1,400/kg, 1,800/m y 50,000/Und).
@@ -538,6 +556,7 @@ export function normalizeVoiceText(text: string): string {
   if (!resultado) return '';
 
   resultado = normalizarTerminosReconocidos(resultado);
+  resultado = normalizarPrefijoPrecioPegado(resultado);
   resultado = normalizarPreciosHablados(resultado);
   resultado = normalizarNumerosEnPalabras(resultado);
   resultado = normalizarSeparadoresDecimalesGenerales(resultado);
