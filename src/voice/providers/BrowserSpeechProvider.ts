@@ -57,6 +57,14 @@ interface SpeechEnabledWindow extends Window {
   webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
 }
 
+interface NormalizedSpeechOptions {
+  language: string;
+  continuous: boolean;
+  interimResults: boolean;
+}
+
+const AUTO_RESTART_DELAY_MS = 250;
+
 function obtenerConstructorSpeechRecognition():
   | BrowserSpeechRecognitionConstructor
   | null {
@@ -131,10 +139,7 @@ async function solicitarPermisoMicrofono(): Promise<void> {
       track.stop();
     }
   } catch (error) {
-    const nombre =
-      error instanceof DOMException
-        ? error.name
-        : '';
+    const nombre = error instanceof DOMException ? error.name : '';
 
     if (
       nombre === 'NotAllowedError' ||
@@ -157,15 +162,32 @@ async function solicitarPermisoMicrofono(): Promise<void> {
   }
 }
 
+function unirSegmentos(segmentos: string[]): string {
+  return segmentos
+    .map((segmento) => segmento.trim())
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export class BrowserSpeechProvider implements SpeechToTextProvider {
   readonly id = 'browser-speech';
   readonly displayName = 'Reconocimiento de voz del navegador';
 
   private recognition: BrowserSpeechRecognition | null = null;
-  private finalText = '';
-  private interimText = '';
   private handlers: SpeechToTextSessionHandlers | null = null;
-  private endedWithError = false;
+  private options: NormalizedSpeechOptions | null = null;
+
+  private finalSegments: string[] = [];
+  private interimText = '';
+
+  private shouldKeepListening = false;
+  private stopRequested = false;
+  private abortRequested = false;
+  private fatalError = false;
+  private startNotified = false;
+  private restartTimer: ReturnType<typeof setTimeout> | null = null;
 
   isSupported(): boolean {
     return obtenerConstructorSpeechRecognition() !== null;
@@ -175,7 +197,7 @@ export class BrowserSpeechProvider implements SpeechToTextProvider {
     handlers: SpeechToTextSessionHandlers,
     options: SpeechToTextStartOptions = {},
   ): Promise<void> {
-    if (this.recognition) {
+    if (this.recognition || this.handlers || this.restartTimer) {
       this.abort();
     }
 
@@ -192,9 +214,19 @@ export class BrowserSpeechProvider implements SpeechToTextProvider {
     }
 
     this.handlers = handlers;
-    this.finalText = '';
+    this.options = {
+      language: options.language ?? 'es-AR',
+      continuous: options.continuous ?? false,
+      interimResults: options.interimResults ?? true,
+    };
+
+    this.finalSegments = [];
     this.interimText = '';
-    this.endedWithError = false;
+    this.shouldKeepListening = true;
+    this.stopRequested = false;
+    this.abortRequested = false;
+    this.fatalError = false;
+    this.startNotified = false;
 
     try {
       await solicitarPermisoMicrofono();
@@ -207,70 +239,199 @@ export class BrowserSpeechProvider implements SpeechToTextProvider {
           ? (error as SpeechToTextError)
           : crearErrorReconocimiento('audio-capture');
 
-      this.handlers = null;
+      this.limpiarEstado();
       handlers.onError(speechError);
       return;
     }
 
-    const recognition = new SpeechRecognitionConstructor();
+    if (!this.handlers || this.abortRequested) {
+      return;
+    }
 
-    recognition.lang = options.language ?? 'es-AR';
-    recognition.continuous = options.continuous ?? false;
-    recognition.interimResults = options.interimResults ?? true;
+    this.iniciarCicloReconocimiento(SpeechRecognitionConstructor);
+  }
+
+  stop(): void {
+    if (!this.handlers) {
+      return;
+    }
+
+    this.stopRequested = true;
+    this.shouldKeepListening = false;
+    this.cancelarReinicio();
+
+    const recognition = this.recognition;
+
+    if (!recognition) {
+      this.finalizarSesion();
+      return;
+    }
+
+    try {
+      recognition.stop();
+    } catch {
+      this.recognition = null;
+      this.finalizarSesion();
+    }
+  }
+
+  abort(): void {
+    const recognition = this.recognition;
+
+    this.abortRequested = true;
+    this.shouldKeepListening = false;
+    this.stopRequested = false;
+    this.cancelarReinicio();
+
+    this.recognition = null;
+    this.handlers = null;
+    this.options = null;
+    this.finalSegments = [];
+    this.interimText = '';
+    this.fatalError = false;
+    this.startNotified = false;
+
+    try {
+      recognition?.abort();
+    } catch {
+      // Puede ocurrir si el navegador ya terminó internamente la sesión.
+    }
+  }
+
+  private iniciarCicloReconocimiento(
+    SpeechRecognitionConstructor: BrowserSpeechRecognitionConstructor,
+  ): void {
+    if (
+      !this.handlers ||
+      !this.options ||
+      !this.shouldKeepListening ||
+      this.stopRequested ||
+      this.abortRequested ||
+      this.fatalError
+    ) {
+      return;
+    }
+
+    const recognition = new SpeechRecognitionConstructor();
+    const processedFinalResultIndexes = new Set<number>();
+
+    recognition.lang = this.options.language;
+    recognition.continuous = this.options.continuous;
+    recognition.interimResults = this.options.interimResults;
     recognition.maxAlternatives = 1;
 
     recognition.onstart = () => {
-      this.handlers?.onStart();
+      if (!this.startNotified) {
+        this.startNotified = true;
+        this.handlers?.onStart();
+      }
     };
 
     recognition.onresult = (event) => {
-      if (event.results.length === 0) {
+      if (!this.handlers) {
         return;
       }
 
-      const latestResult = event.results[event.results.length - 1];
-      const transcript = latestResult[0]?.transcript?.trim() ?? '';
+      for (
+        let index = event.resultIndex;
+        index < event.results.length;
+        index += 1
+      ) {
+        const result = event.results[index];
+        const transcript = result[0]?.transcript?.trim() ?? '';
 
-      if (!transcript) {
-        return;
+        if (!transcript) {
+          continue;
+        }
+
+        if (result.isFinal && !processedFinalResultIndexes.has(index)) {
+          processedFinalResultIndexes.add(index);
+          this.finalSegments.push(transcript);
+        }
       }
 
-      if (latestResult.isFinal) {
-        this.finalText = transcript;
-        this.interimText = '';
-      } else {
-        this.interimText = transcript;
+      const interinos: string[] = [];
+
+      for (let index = 0; index < event.results.length; index += 1) {
+        const result = event.results[index];
+
+        if (result.isFinal) {
+          continue;
+        }
+
+        const transcript = result[0]?.transcript?.trim() ?? '';
+
+        if (transcript) {
+          interinos.push(transcript);
+        }
       }
 
-      this.handlers?.onUpdate({
-        finalText: this.finalText,
-        interimText: this.interimText,
-      });
+      this.interimText = unirSegmentos(interinos);
+      this.emitirActualizacion();
     };
 
     recognition.onerror = (event) => {
-      this.endedWithError = event.error !== 'aborted';
+      if (!this.handlers) {
+        return;
+      }
 
-      this.handlers?.onError(
+      if (event.error === 'aborted' && this.abortRequested) {
+        return;
+      }
+
+      if (
+        event.error === 'no-speech' &&
+        this.options?.continuous &&
+        this.shouldKeepListening &&
+        !this.stopRequested
+      ) {
+        return;
+      }
+
+      if (event.error === 'aborted' && this.stopRequested) {
+        return;
+      }
+
+      this.fatalError = true;
+      this.shouldKeepListening = false;
+      this.cancelarReinicio();
+
+      this.handlers.onError(
         crearErrorReconocimiento(event.error, event.message),
       );
     };
 
     recognition.onend = () => {
-      const textoFinal = this.finalText.trim();
-
-      const currentHandlers = this.handlers;
-      const endedWithError = this.endedWithError;
-
-      this.recognition = null;
-      this.handlers = null;
-      this.finalText = '';
-      this.interimText = '';
-      this.endedWithError = false;
-
-      if (!endedWithError || textoFinal) {
-        currentHandlers?.onEnd(textoFinal);
+      if (this.recognition === recognition) {
+        this.recognition = null;
       }
+
+      this.interimText = '';
+
+      if (this.handlers) {
+        this.emitirActualizacion();
+      }
+
+      if (this.abortRequested || !this.handlers) {
+        return;
+      }
+
+      if (this.fatalError) {
+        this.limpiarEstado();
+        return;
+      }
+
+      if (this.stopRequested || !this.shouldKeepListening) {
+        this.finalizarSesion();
+        return;
+      }
+
+      if (this.options?.continuous) {
+        this.programarReinicio(SpeechRecognitionConstructor);
+        return;
+      }
+
+      this.finalizarSesion();
     };
 
     this.recognition = recognition;
@@ -278,10 +439,17 @@ export class BrowserSpeechProvider implements SpeechToTextProvider {
     try {
       recognition.start();
     } catch (error) {
-      this.recognition = null;
-      this.handlers = null;
+      if (this.recognition === recognition) {
+        this.recognition = null;
+      }
 
-      handlers.onError(
+      this.fatalError = true;
+      this.shouldKeepListening = false;
+
+      const currentHandlers = this.handlers;
+      this.limpiarEstado();
+
+      currentHandlers?.onError(
         crearErrorReconocimiento(
           'unknown',
           error instanceof Error
@@ -292,23 +460,62 @@ export class BrowserSpeechProvider implements SpeechToTextProvider {
     }
   }
 
-  stop(): void {
-    this.recognition?.stop();
+  private programarReinicio(
+    SpeechRecognitionConstructor: BrowserSpeechRecognitionConstructor,
+  ): void {
+    this.cancelarReinicio();
+
+    this.restartTimer = setTimeout(() => {
+      this.restartTimer = null;
+
+      if (
+        !this.handlers ||
+        !this.shouldKeepListening ||
+        this.stopRequested ||
+        this.abortRequested ||
+        this.fatalError
+      ) {
+        return;
+      }
+
+      this.iniciarCicloReconocimiento(SpeechRecognitionConstructor);
+    }, AUTO_RESTART_DELAY_MS);
   }
 
-  abort(): void {
-    const recognition = this.recognition;
+  private emitirActualizacion(): void {
+    this.handlers?.onUpdate({
+      finalText: unirSegmentos(this.finalSegments),
+      interimText: this.interimText,
+    });
+  }
+
+  private finalizarSesion(): void {
+    const currentHandlers = this.handlers;
+    const textoFinal = unirSegmentos(this.finalSegments);
+
+    this.limpiarEstado();
+    currentHandlers?.onEnd(textoFinal);
+  }
+
+  private cancelarReinicio(): void {
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
+  }
+
+  private limpiarEstado(): void {
+    this.cancelarReinicio();
 
     this.recognition = null;
     this.handlers = null;
-    this.finalText = '';
+    this.options = null;
+    this.finalSegments = [];
     this.interimText = '';
-    this.endedWithError = false;
-
-    try {
-      recognition?.abort();
-    } catch {
-      // No requiere acción: puede ocurrir si la sesión ya terminó.
-    }
+    this.shouldKeepListening = false;
+    this.stopRequested = false;
+    this.abortRequested = false;
+    this.fatalError = false;
+    this.startNotified = false;
   }
 }
