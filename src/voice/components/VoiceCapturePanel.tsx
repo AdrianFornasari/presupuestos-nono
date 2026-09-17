@@ -8,6 +8,7 @@ import { normalizeVoiceText } from '../normalization/normalizeVoiceText';
 import { parseChapaTechoVoiceCommand } from '../parsers/chapaTechoVoiceParser';
 import { parsePerfilCVoiceCommand } from '../parsers/perfilCVoiceParser';
 import { parseIpnIpeVoiceCommand } from '../parsers/ipnIpeVoiceParser';
+import { parseHeaHebWVoiceCommand } from '../parsers/heaHebWVoiceParser';
 import { parsePerfilUVoiceCommand } from '../parsers/perfilUVoiceParser';
 import {
   formatInches,
@@ -82,6 +83,7 @@ function VoiceCapturePanel({
   const productIdentification = identifyVoiceProduct(normalizedText);
   const perfilCParseResult = parsePerfilCVoiceCommand(normalizedText);
   const ipnIpeParseResult = parseIpnIpeVoiceCommand(normalizedText);
+  const heaHebWParseResult = parseHeaHebWVoiceCommand(normalizedText);
   const perfilUParseResult = parsePerfilUVoiceCommand(normalizedText);
   const anguloPlanchuelaParseResult =
     parseAnguloPlanchuelaVoiceCommand(normalizedText);
@@ -661,6 +663,130 @@ function VoiceCapturePanel({
             )}
 
             {ipnIpeParseResult.issues.map((issue) => (
+              <div
+                key={issue}
+                className="message-box"
+                style={{ marginTop: '10px' }}
+              >
+                {issue}
+              </div>
+            ))}
+          </div>
+        )}
+
+      {finalText &&
+        status === 'result' &&
+        heaHebWParseResult.status !== 'not-applicable' &&
+        heaHebWParseResult.data && (
+          <div
+            style={{
+              border: '1px solid currentColor',
+              borderRadius: '12px',
+              padding: '12px',
+              marginTop: '12px',
+              marginBottom: '14px',
+            }}
+          >
+            <strong>Etapa 4 · Datos estructurados de HEA / HEB / W</strong>
+
+            <div style={{ marginTop: '10px', display: 'grid', gap: '6px' }}>
+              <div>
+                Producto:{' '}
+                <strong>{heaHebWParseResult.data.canonicalType}</strong>
+              </div>
+
+              <div>
+                Cantidad:{' '}
+                <strong>{heaHebWParseResult.data.quantity ?? 'faltante'}</strong>
+              </div>
+
+              <div>
+                Medida nominal:{' '}
+                <strong>
+                  {heaHebWParseResult.data.nominalSizeMm !== undefined
+                    ? `${heaHebWParseResult.data.nominalSizeMm}`
+                    : 'faltante'}
+                </strong>
+              </div>
+
+              {(heaHebWParseResult.data.canonicalType === 'W (H)' ||
+                heaHebWParseResult.data.canonicalType === 'W (I)') && (
+                <div>
+                  Segundo valor de designación:{' '}
+                  <strong>
+                    {heaHebWParseResult.data.designationKgM !== undefined
+                      ? `${heaHebWParseResult.data.designationKgM}`
+                      : 'faltante'}
+                  </strong>
+                </div>
+              )}
+
+              <div>
+                Largo:{' '}
+                <strong>{heaHebWParseResult.data.lengthM} m</strong>{' '}
+                <span className="empty-text">
+                  ({heaHebWParseResult.data.lengthSource === 'default'
+                    ? 'predeterminado'
+                    : 'dictado'})
+                </span>
+              </div>
+
+              <div>
+                Precio:{' '}
+                <strong>
+                  {heaHebWParseResult.data.price !== undefined
+                    ? `${heaHebWParseResult.data.price
+                        .toFixed(3)
+                        .replace('.', ',')}/kg`
+                    : 'faltante'}
+                </strong>
+              </div>
+
+              <div>
+                Variante de tabla:{' '}
+                <strong>
+                  {heaHebWParseResult.data.productDescription ??
+                    'sin coincidencia exacta todavía'}
+                </strong>
+              </div>
+
+              {heaHebWParseResult.data.productId && (
+                <div className="empty-text">
+                  ID de producto: {heaHebWParseResult.data.productId}
+                </div>
+              )}
+
+              {heaHebWParseResult.data.massNominalKgM !== undefined && (
+                <div className="empty-text">
+                  Masa nominal de tabla: {heaHebWParseResult.data.massNominalKgM} kg/m
+                </div>
+              )}
+            </div>
+
+            {heaHebWParseResult.status === 'matched' && (
+              <div className="message-box" style={{ marginTop: '12px' }}>
+                {heaHebWParseResult.data.canonicalType} interpretado completamente y
+                vinculado a una variante real de la tabla maestra. Todavía no se
+                calcula peso ni se agrega el producto al presupuesto.
+              </div>
+            )}
+
+            {heaHebWParseResult.missingFields.length > 0 && (
+              <div className="empty-text" style={{ marginTop: '10px' }}>
+                Faltan datos: {heaHebWParseResult.missingFields
+                  .map((field) => {
+                    if (field === 'quantity') return 'cantidad';
+                    if (field === 'nominalSizeMm') return 'medida nominal';
+                    if (field === 'designationKgM') {
+                      return 'segundo valor de designación W';
+                    }
+                    return 'precio USD/kg';
+                  })
+                  .join(' · ')}.
+              </div>
+            )}
+
+            {heaHebWParseResult.issues.map((issue) => (
               <div
                 key={issue}
                 className="message-box"

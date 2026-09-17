@@ -399,6 +399,22 @@ function normalizarPrecioCompactado(texto: string): string {
   return resultado;
 }
 
+
+function normalizarSiglasEstructuralesPegadas(texto: string): string {
+  // Android/Chrome puede pegar cantidad, sigla y medida en una sola cadena:
+  // "hea200", "3heb", "4w h200" o incluso reconocer la I de W I como "y".
+  // Estas correcciones se limitan a las familias estructurales conocidas para
+  // no separar letras y números de manera global.
+  return texto
+    .replace(/\b(\d+)\s*(hea|heb)\s*(\d+)\b/giu, '$1 $2 $3')
+    .replace(/\b(hea|heb)\s*(\d+)\b/giu, '$1 $2')
+    .replace(/\b(\d+)\s*(hea|heb)\b/giu, '$1 $2')
+    .replace(/\b(\d+)\s*w\s*(?:h|hache)\s*(\d+)\b/giu, '$1 w h $2')
+    .replace(/\bw\s*(?:h|hache)\s*(\d+)\b/giu, 'w h $1')
+    .replace(/\b(\d+)\s*w\s*(?:i|y)\s*(\d+)\b/giu, '$1 w i $2')
+    .replace(/\bw\s*(?:i|y)\s*(\d+)\b/giu, 'w i $1');
+}
+
 function normalizarTerminosReconocidos(texto: string): string {
   return texto
     .replace(/\b(?:masha|maya)\b/giu, 'malla')
@@ -406,6 +422,13 @@ function normalizarTerminosReconocidos(texto: string): string {
     .replace(/\bypn\b/giu, 'IPN')
     .replace(/\bipn\b/giu, 'IPN')
     .replace(/\b(?:ipe|ype)\b/giu, 'IPE')
+    .replace(/\bh\s+e\s+a\b/giu, 'HEA')
+    .replace(/\bhea\b/giu, 'HEA')
+    .replace(/\bh\s+e\s+b\b/giu, 'HEB')
+    .replace(/\bheb\b/giu, 'HEB')
+    .replace(/\b(?:doble\s+(?:ve|v|u)|w)\s+(?:h|hache)\b/giu, 'W H')
+    .replace(/\b(?:doble\s+(?:ve|v|u)|w)\s+i\b/giu, 'W I')
+    .replace(/\bhp\b/giu, 'HP')
     .replace(/\bperfil(?:es)?\s+c\b/giu, (coincidencia) =>
       coincidencia.toLocaleLowerCase('es-AR').startsWith('perfiles')
         ? 'perfiles C'
@@ -518,11 +541,34 @@ function normalizarEspesor(texto: string): string {
   return resultado;
 }
 
+function normalizarPulgadasYMedias(texto: string): string {
+  // SpeechRecognition suele devolver expresiones naturales como
+  // "1 pulgada y media". Para los parsers de Ángulo y Planchuela se
+  // canoniza a la notación usual del rubro: 1 1/2".
+  return texto.replace(
+    /\b(\d+)\s+pulgadas?\s+y\s+media\b/giu,
+    (_coincidencia, pulgadas: string) => `${pulgadas} 1/2 pulgadas`,
+  );
+}
+
+function normalizarPrecioUnos(texto: string): string {
+  // Android puede oír "uno quinientos" como "unos 500". En contexto
+  // inequívoco de precio y con exactamente tres cifras se interpreta según
+  // la convención habitual del proyecto: 1,500; 1,650; etc.
+  return texto.replace(
+    /\b(a|precio)\s+unos\s+(\d{3})\s+(?:(?:el|por)\s+)?(kg|kilo|kilos|kilogramo|kilogramos|m|metro|metros)\b/giu,
+    (_coincidencia, prefijo: string, decimales: string, unidad: string) => {
+      const unidadNormalizada = /^(?:m|metro|metros)$/iu.test(unidad) ? 'm' : 'kg';
+      return `${prefijo} 1,${decimales}/${unidadNormalizada}`;
+    },
+  );
+}
+
 function normalizarDimensiones(texto: string): string {
   // El número de la derecha se mira con lookahead pero no se consume. Así una
   // cadena como "100 por 50 por 15" puede normalizar ambos separadores.
   return texto.replace(
-    /(\d+(?:,\d+)?)\s*(?:por|x|×|%)\s*(?=\d+(?:,\d+)?)/giu,
+    /(\d+(?:,\d+)?)\s*(?:por|x|×|%|\*)\s*(?=\d+(?:,\d+)?)/giu,
     '$1 x ',
   );
 }
@@ -556,10 +602,13 @@ export function normalizeVoiceText(text: string): string {
 
   if (!resultado) return '';
 
+  resultado = normalizarSiglasEstructuralesPegadas(resultado);
   resultado = normalizarTerminosReconocidos(resultado);
   resultado = normalizarPrefijoPrecioPegado(resultado);
   resultado = normalizarPreciosHablados(resultado);
   resultado = normalizarNumerosEnPalabras(resultado);
+  resultado = normalizarPulgadasYMedias(resultado);
+  resultado = normalizarPrecioUnos(resultado);
   resultado = normalizarSeparadoresDecimalesGenerales(resultado);
   resultado = normalizarDecimalesNumericos(resultado);
   resultado = normalizarPrecioCompactado(resultado);

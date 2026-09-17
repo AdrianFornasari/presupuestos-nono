@@ -70,11 +70,11 @@ const PRODUCT_ALIAS_DICTIONARY: readonly VoiceProductAliasEntry[] = [
   },
   {
     canonicalTypes: ['HEA'],
-    aliases: ['hea'],
+    aliases: ['hea', 'h e a', 'perfil hea', 'perfiles hea'],
   },
   {
     canonicalTypes: ['HEB'],
-    aliases: ['heb'],
+    aliases: ['heb', 'h e b', 'perfil heb', 'perfiles heb'],
   },
   {
     canonicalTypes: ['UL'],
@@ -82,11 +82,26 @@ const PRODUCT_ALIAS_DICTIONARY: readonly VoiceProductAliasEntry[] = [
   },
   {
     canonicalTypes: ['W (H)'],
-    aliases: ['w h', 'perfil w h'],
+    aliases: [
+      'w h',
+      'perfil w h',
+      'doble ve h',
+      'doble ve hache',
+      'doble v h',
+      'doble u h',
+      'hp',
+      'perfil hp',
+    ],
   },
   {
     canonicalTypes: ['W (I)'],
-    aliases: ['w i', 'perfil w i'],
+    aliases: [
+      'w i',
+      'perfil w i',
+      'doble ve i',
+      'doble v i',
+      'doble u i',
+    ],
   },
   {
     canonicalTypes: ['Ángulo alas iguales'],
