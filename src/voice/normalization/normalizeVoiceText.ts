@@ -402,13 +402,17 @@ function normalizarPrecioCompactado(texto: string): string {
 
 function normalizarSiglasEstructuralesPegadas(texto: string): string {
   // Android/Chrome puede pegar cantidad, sigla y medida en una sola cadena:
-  // "hea200", "3heb", "4w h200" o incluso reconocer la I de W I como "y".
-  // Estas correcciones se limitan a las familias estructurales conocidas para
-  // no separar letras y números de manera global.
+  // "hea200", "3heb", "4w h200", "4ul50" o "upn200".
+  // También puede reconocer la I de W I como "y". Estas correcciones se
+  // limitan a familias estructurales conocidas para no separar letras y
+  // números de manera global.
   return texto
     .replace(/\b(\d+)\s*(hea|heb)\s*(\d+)\b/giu, '$1 $2 $3')
     .replace(/\b(hea|heb)\s*(\d+)\b/giu, '$1 $2')
     .replace(/\b(\d+)\s*(hea|heb)\b/giu, '$1 $2')
+    .replace(/\b(\d+)\s*(upn|ul)\s*(\d+)\b/giu, '$1 $2 $3')
+    .replace(/\b(upn|ul)\s*(\d+)\b/giu, '$1 $2')
+    .replace(/\b(\d+)\s*(upn|ul)\b/giu, '$1 $2')
     .replace(/\b(\d+)\s*w\s*(?:h|hache)\s*(\d+)\b/giu, '$1 w h $2')
     .replace(/\bw\s*(?:h|hache)\s*(\d+)\b/giu, 'w h $1')
     .replace(/\b(\d+)\s*w\s*(?:i|y)\s*(\d+)\b/giu, '$1 w i $2')
@@ -417,11 +421,18 @@ function normalizarSiglasEstructuralesPegadas(texto: string): string {
 
 function normalizarTerminosReconocidos(texto: string): string {
   return texto
+    // Android/Chrome puede reconocer la sigla "UL" como la palabra
+    // "huele". Se corrige sólo cuando aparece en posición de producto:
+    // al inicio de la frase o inmediatamente después de una cantidad.
+    .replace(/^\s*huele\b/giu, 'UL')
+    .replace(/\b(\d+)\s+huele\b/giu, '$1 UL')
     .replace(/\b(?:masha|maya)\b/giu, 'malla')
     .replace(/\b(?:mashas|mayas)\b/giu, 'mallas')
     .replace(/\bypn\b/giu, 'IPN')
     .replace(/\bipn\b/giu, 'IPN')
     .replace(/\b(?:ipe|ype)\b/giu, 'IPE')
+    .replace(/\bupn\b/giu, 'UPN')
+    .replace(/\bul\b/giu, 'UL')
     .replace(/\bh\s+e\s+a\b/giu, 'HEA')
     .replace(/\bhea\b/giu, 'HEA')
     .replace(/\bh\s+e\s+b\b/giu, 'HEB')

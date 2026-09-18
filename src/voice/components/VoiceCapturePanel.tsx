@@ -9,11 +9,11 @@ import { parseChapaTechoVoiceCommand } from '../parsers/chapaTechoVoiceParser';
 import { parsePerfilCVoiceCommand } from '../parsers/perfilCVoiceParser';
 import { parseIpnIpeVoiceCommand } from '../parsers/ipnIpeVoiceParser';
 import { parseHeaHebWVoiceCommand } from '../parsers/heaHebWVoiceParser';
+import { parseUpnUlVoiceCommand } from '../parsers/upnUlVoiceParser';
 import { parsePerfilUVoiceCommand } from '../parsers/perfilUVoiceParser';
-import {
-  formatInches,
-  parseAnguloPlanchuelaVoiceCommand,
-} from '../parsers/anguloPlanchuelaVoiceParser';
+import { parseAnguloPlanchuelaVoiceCommand } from '../parsers/anguloPlanchuelaVoiceParser';
+import { formatInches } from '../parsers/imperialMeasure';
+import { parseBarraVoiceCommand } from '../parsers/barraVoiceParser';
 import { parseMallaVoiceCommand } from '../parsers/mallaVoiceParser';
 import { parsePlanchaVoiceCommand } from '../parsers/planchaVoiceParser';
 import { parseRecorteVoiceCommand } from '../parsers/recorteVoiceParser';
@@ -84,11 +84,13 @@ function VoiceCapturePanel({
   const perfilCParseResult = parsePerfilCVoiceCommand(normalizedText);
   const ipnIpeParseResult = parseIpnIpeVoiceCommand(normalizedText);
   const heaHebWParseResult = parseHeaHebWVoiceCommand(normalizedText);
+  const upnUlParseResult = parseUpnUlVoiceCommand(normalizedText);
   const perfilUParseResult = parsePerfilUVoiceCommand(normalizedText);
   const anguloPlanchuelaParseResult =
     parseAnguloPlanchuelaVoiceCommand(normalizedText);
   const anguloPlanchuelaCanonicalType =
     anguloPlanchuelaParseResult.data?.canonicalType;
+  const barraParseResult = parseBarraVoiceCommand(normalizedText);
   const tuboParseResult = parseTuboVoiceCommand(normalizedText);
   const chapaTechoParseResult = parseChapaTechoVoiceCommand(normalizedText);
   const planchaParseResult = parsePlanchaVoiceCommand(normalizedText);
@@ -800,6 +802,129 @@ function VoiceCapturePanel({
 
       {finalText &&
         status === 'result' &&
+        upnUlParseResult.status !== 'not-applicable' &&
+        upnUlParseResult.data && (
+          <div
+            style={{
+              border: '1px solid currentColor',
+              borderRadius: '12px',
+              padding: '12px',
+              marginTop: '12px',
+              marginBottom: '14px',
+            }}
+          >
+            <strong>Etapa 4 · Datos estructurados de UPN / UL</strong>
+
+            <div style={{ marginTop: '10px', display: 'grid', gap: '6px' }}>
+              <div>
+                Producto:{' '}
+                <strong>{upnUlParseResult.data.canonicalType}</strong>
+              </div>
+
+              <div>
+                Cantidad:{' '}
+                <strong>{upnUlParseResult.data.quantity ?? 'faltante'}</strong>
+              </div>
+
+              {upnUlParseResult.data.canonicalType === 'UPN' ? (
+                <div>
+                  Medida nominal:{' '}
+                  <strong>
+                    {upnUlParseResult.data.nominalSizeMm !== undefined
+                      ? `${upnUlParseResult.data.nominalSizeMm}`
+                      : 'faltante'}
+                  </strong>
+                </div>
+              ) : (
+                <div>
+                  Medidas:{' '}
+                  <strong>
+                    {upnUlParseResult.data.heightMm !== undefined &&
+                    upnUlParseResult.data.flangeMm !== undefined
+                      ? `${upnUlParseResult.data.heightMm} x ${upnUlParseResult.data.flangeMm} mm`
+                      : 'faltantes'}
+                  </strong>
+                </div>
+              )}
+
+              <div>
+                Largo:{' '}
+                <strong>{upnUlParseResult.data.lengthM} m</strong>{' '}
+                <span className="empty-text">
+                  ({upnUlParseResult.data.lengthSource === 'default'
+                    ? 'predeterminado'
+                    : 'dictado'})
+                </span>
+              </div>
+
+              <div>
+                Precio:{' '}
+                <strong>
+                  {upnUlParseResult.data.price !== undefined
+                    ? `${upnUlParseResult.data.price
+                        .toFixed(3)
+                        .replace('.', ',')}/kg`
+                    : 'faltante'}
+                </strong>
+              </div>
+
+              <div>
+                Variante de tabla:{' '}
+                <strong>
+                  {upnUlParseResult.data.productDescription ??
+                    'sin coincidencia exacta todavía'}
+                </strong>
+              </div>
+
+              {upnUlParseResult.data.productId && (
+                <div className="empty-text">
+                  ID de producto: {upnUlParseResult.data.productId}
+                </div>
+              )}
+
+              {upnUlParseResult.data.massNominalKgM !== undefined && (
+                <div className="empty-text">
+                  Masa nominal de tabla: {upnUlParseResult.data.massNominalKgM} kg/m
+                </div>
+              )}
+            </div>
+
+            {upnUlParseResult.status === 'matched' && (
+              <div className="message-box" style={{ marginTop: '12px' }}>
+                {upnUlParseResult.data.canonicalType} interpretado completamente y
+                vinculado a una variante real de la tabla maestra. Todavía no se
+                calcula peso ni se agrega el producto al presupuesto.
+              </div>
+            )}
+
+            {upnUlParseResult.missingFields.length > 0 && (
+              <div className="empty-text" style={{ marginTop: '10px' }}>
+                Faltan datos: {upnUlParseResult.missingFields
+                  .map((field) => {
+                    if (field === 'quantity') return 'cantidad';
+                    if (field === 'nominalSizeMm') return 'medida nominal';
+                    if (field === 'heightMm') return 'alto';
+                    if (field === 'flangeMm') return 'ala';
+                    return 'precio USD/kg';
+                  })
+                  .join(' · ')}.
+              </div>
+            )}
+
+            {upnUlParseResult.issues.map((issue) => (
+              <div
+                key={issue}
+                className="message-box"
+                style={{ marginTop: '10px' }}
+              >
+                {issue}
+              </div>
+            ))}
+          </div>
+        )}
+
+      {finalText &&
+        status === 'result' &&
         perfilUParseResult.status !== 'not-applicable' &&
         perfilUParseResult.data && (
           <div
@@ -1019,6 +1144,115 @@ function VoiceCapturePanel({
             )}
 
             {anguloPlanchuelaParseResult.issues.map((issue) => (
+              <div
+                key={issue}
+                className="message-box"
+                style={{ marginTop: '10px' }}
+              >
+                {issue}
+              </div>
+            ))}
+          </div>
+        )}
+
+      {finalText &&
+        status === 'result' &&
+        barraParseResult.status !== 'not-applicable' &&
+        barraParseResult.data && (
+          <div
+            style={{
+              border: '1px solid currentColor',
+              borderRadius: '12px',
+              padding: '12px',
+              marginTop: '12px',
+              marginBottom: '14px',
+            }}
+          >
+            <strong>Etapa 4 · Datos estructurados de Barras</strong>
+
+            <div style={{ marginTop: '10px', display: 'grid', gap: '6px' }}>
+              <div>
+                Producto:{' '}
+                <strong>{barraParseResult.data.canonicalType}</strong>
+              </div>
+
+              <div>
+                Cantidad:{' '}
+                <strong>{barraParseResult.data.quantity ?? 'faltante'}</strong>
+              </div>
+
+              <div>
+                Medida:{' '}
+                <strong>
+                  {barraParseResult.data.sizeInches !== undefined
+                    ? formatInches(barraParseResult.data.sizeInches)
+                    : 'faltante'}
+                </strong>
+              </div>
+
+              <div>
+                Largo:{' '}
+                <strong>{barraParseResult.data.lengthM} m</strong>{' '}
+                <span className="empty-text">
+                  ({barraParseResult.data.lengthSource === 'default'
+                    ? 'predeterminado'
+                    : 'dictado'})
+                </span>
+              </div>
+
+              <div>
+                Precio:{' '}
+                <strong>
+                  {barraParseResult.data.price !== undefined
+                    ? `${barraParseResult.data.price
+                        .toFixed(3)
+                        .replace('.', ',')}/kg`
+                    : 'faltante'}
+                </strong>
+              </div>
+
+              <div>
+                Variante de tabla:{' '}
+                <strong>
+                  {barraParseResult.data.productDescription ??
+                    'sin coincidencia exacta todavía'}
+                </strong>
+              </div>
+
+              {barraParseResult.data.productId && (
+                <div className="empty-text">
+                  ID de producto: {barraParseResult.data.productId}
+                </div>
+              )}
+
+              {barraParseResult.data.massNominalKgM !== undefined && (
+                <div className="empty-text">
+                  Masa nominal de tabla: {barraParseResult.data.massNominalKgM} kg/m
+                </div>
+              )}
+            </div>
+
+            {barraParseResult.status === 'matched' && (
+              <div className="message-box" style={{ marginTop: '12px' }}>
+                {barraParseResult.data.canonicalType} interpretada completamente y
+                vinculada a una variante real de la tabla maestra. Todavía no se
+                calcula peso ni se agrega el producto al presupuesto.
+              </div>
+            )}
+
+            {barraParseResult.missingFields.length > 0 && (
+              <div className="empty-text" style={{ marginTop: '10px' }}>
+                Faltan datos: {barraParseResult.missingFields
+                  .map((field) => {
+                    if (field === 'quantity') return 'cantidad';
+                    if (field === 'sizeInches') return 'medida en pulgadas';
+                    return 'precio USD/kg';
+                  })
+                  .join(' · ')}.
+              </div>
+            )}
+
+            {barraParseResult.issues.map((issue) => (
               <div
                 key={issue}
                 className="message-box"

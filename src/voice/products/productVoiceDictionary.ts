@@ -66,7 +66,7 @@ const PRODUCT_ALIAS_DICTIONARY: readonly VoiceProductAliasEntry[] = [
   },
   {
     canonicalTypes: ['UPN'],
-    aliases: ['upn'],
+    aliases: ['upn', 'u p n', 'u pe ene', 'perfil upn', 'perfiles upn'],
   },
   {
     canonicalTypes: ['HEA'],
@@ -78,7 +78,7 @@ const PRODUCT_ALIAS_DICTIONARY: readonly VoiceProductAliasEntry[] = [
   },
   {
     canonicalTypes: ['UL'],
-    aliases: ['ul', 'perfil ul'],
+    aliases: ['ul', 'u l', 'u ele', 'perfil ul', 'perfiles ul'],
   },
   {
     canonicalTypes: ['W (H)'],
