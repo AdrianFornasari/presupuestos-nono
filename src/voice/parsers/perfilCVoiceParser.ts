@@ -121,19 +121,36 @@ function extractDimensions(text: string): {
   flangeMm?: number;
   lipMm?: number;
 } {
-  const match = text.match(
+  const tripleMatch = text.match(
     new RegExp(
       `\\b${NUMBER_PATTERN}\\s*x\\s*${NUMBER_PATTERN}\\s*x\\s*${NUMBER_PATTERN}\\b`,
       'iu',
     ),
   );
 
-  if (!match) return {};
+  if (tripleMatch) {
+    return {
+      heightMm: parseLocalizedNumber(tripleMatch[1]),
+      flangeMm: parseLocalizedNumber(tripleMatch[2]),
+      lipMm: parseLocalizedNumber(tripleMatch[3]),
+    };
+  }
+
+  // ETAPA 5.1: conservar dimensiones parciales de un Perfil C pendiente.
+  // Ejemplo: "10 perfiles C 100 x 50" retiene alto y ala y permite
+  // preguntar solamente por labio, espesor y precio.
+  const pairMatch = text.match(
+    new RegExp(
+      `\\b${NUMBER_PATTERN}\\s*x\\s*${NUMBER_PATTERN}\\b`,
+      'iu',
+    ),
+  );
+
+  if (!pairMatch) return {};
 
   return {
-    heightMm: parseLocalizedNumber(match[1]),
-    flangeMm: parseLocalizedNumber(match[2]),
-    lipMm: parseLocalizedNumber(match[3]),
+    heightMm: parseLocalizedNumber(pairMatch[1]),
+    flangeMm: parseLocalizedNumber(pairMatch[2]),
   };
 }
 

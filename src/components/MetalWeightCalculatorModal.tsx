@@ -717,6 +717,69 @@ function valoresIniciales(forma: FormaMetal): Record<string, string> {
   };
 }
 
+
+export type FormaTuboCalculadora =
+  | 'tubo-redondo'
+  | 'tubo-cuadrado'
+  | 'tubo-rectangular';
+
+export interface DatosCalculoTuboDeterministico {
+  forma: FormaTuboCalculadora;
+  cantidad: number;
+  largoM: number;
+  diametroExteriorMm?: number;
+  ladoExteriorMm?: number;
+  anchoExteriorMm?: number;
+  altoExteriorMm?: number;
+  espesorTuboMm: number;
+}
+
+/**
+ * Reutiliza exactamente la misma rutina determinística que usa la calculadora
+ * visual para obtener el peso total de un tubo. La capa de voz sólo aporta
+ * los parámetros estructurados; no implementa una fórmula física paralela.
+ */
+export function calcularPesoTotalTuboCalculadora(
+  datos: DatosCalculoTuboDeterministico,
+): number {
+  if (
+    !Number.isInteger(datos.cantidad) ||
+    datos.cantidad <= 0 ||
+    !Number.isFinite(datos.largoM) ||
+    datos.largoM <= 0 ||
+    !Number.isFinite(datos.espesorTuboMm) ||
+    datos.espesorTuboMm <= 0
+  ) {
+    return Number.NaN;
+  }
+
+  const valores = valoresIniciales(datos.forma);
+  valores.largoMm = String(datos.largoM * 1000);
+  valores.espesorTuboMm = String(datos.espesorTuboMm);
+
+  if (datos.forma === 'tubo-redondo') {
+    valores.diametroExteriorMm = String(datos.diametroExteriorMm ?? '');
+  } else if (datos.forma === 'tubo-cuadrado') {
+    valores.ladoExteriorMm = String(datos.ladoExteriorMm ?? '');
+  } else {
+    valores.anchoExteriorMm = String(datos.anchoExteriorMm ?? '');
+    valores.altoExteriorMm = String(datos.altoExteriorMm ?? '');
+  }
+
+  const pesoUnitario = calcularValorUnitario(
+    datos.forma,
+    'manual',
+    '',
+    valores,
+  );
+
+  if (!Number.isFinite(pesoUnitario) || pesoUnitario <= 0) {
+    return Number.NaN;
+  }
+
+  return pesoUnitario * datos.cantidad;
+}
+
 function MetalWeightCalculatorModal({
   abierto,
   cantidad,

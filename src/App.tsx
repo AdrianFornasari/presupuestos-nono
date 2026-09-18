@@ -8,6 +8,7 @@ import {
   type KeyboardEvent,
 } from 'react';
 import MetalWeightCalculatorModal, {
+  calcularPesoTotalTuboCalculadora,
   type ResultadoCalculoMetal,
 } from './components/MetalWeightCalculatorModal';
 import {
@@ -78,6 +79,11 @@ import {
   registrarTranscripcionVoz,
 } from './db/voiceTranscriptionsService';
 import type { VoiceTranscriptionEvaluation } from './voice/types/voice';
+import type { VoiceReadyProduct } from './voice/products/voiceReadyProduct';
+import {
+  calcularPesoTotalPlanchaAcero,
+  calcularPesoTotalProductoProveedor,
+} from './domain/productCalculations';
 
 // BUILD: AJUSTES-MALLAS-PDF-V14-20260912
 type Pantalla = 'menu' | 'inicio' | 'editar' | 'configuracion' | 'visitas';
@@ -372,7 +378,9 @@ function App() {
       return '';
     }
 
-    return formatearDecimal4SinMiles(cantidad * largo * masaNominal);
+    return formatearDecimal4SinMiles(
+      calcularPesoTotalProductoProveedor(cantidad, largo, masaNominal),
+    );
   }
 
   function calcularPesoTotalPlancha(
@@ -399,7 +407,12 @@ function App() {
       return '';
     }
 
-    const pesoKg = cantidad * largoMm * anchoMm * espesorMm * 0.00000785;
+    const pesoKg = calcularPesoTotalPlanchaAcero(
+      cantidad,
+      largoMm,
+      anchoMm,
+      espesorMm,
+    );
     return formatearDecimal4SinMiles(pesoKg);
   }
 
@@ -1096,6 +1109,133 @@ function App() {
     setMensaje('');
   }
 
+  async function agregarProductoDesdeVoz(
+    producto: VoiceReadyProduct,
+  ): Promise<void> {
+    if (!presupuestoActual) {
+      throw new Error('No hay un presupuesto activo para agregar el producto.');
+    }
+
+    let datosLinea: {
+      descripcion: string;
+      cantidad: number;
+      unidad: string;
+      precioUnitario: number;
+      pesoTotal: number;
+      tipoCalculo: TipoCalculoLinea;
+      largo?: number;
+      ancho?: number;
+      espesor?: number;
+      masaNominal?: number;
+    };
+
+    if (producto.kind === 'catalog-weight') {
+      const pesoTotal = calcularPesoTotalProductoProveedor(
+        producto.quantity,
+        producto.lengthM,
+        producto.massNominalKgM,
+      );
+
+      if (!Number.isFinite(pesoTotal) || pesoTotal <= 0) {
+        throw new Error('No se pudo calcular un peso total válido para el producto de tabla.');
+      }
+
+      datosLinea = {
+        descripcion: producto.description,
+        cantidad: producto.quantity,
+        unidad: 'kg',
+        precioUnitario: producto.price,
+        pesoTotal,
+        tipoCalculo: 'peso',
+        largo: producto.lengthM,
+        masaNominal: producto.massNominalKgM,
+      };
+    } else if (producto.kind === 'tube') {
+      const pesoTotal = calcularPesoTotalTuboCalculadora({
+        forma: producto.calculatorShape,
+        cantidad: producto.quantity,
+        largoM: producto.lengthM,
+        diametroExteriorMm: producto.diameterMm,
+        ladoExteriorMm: producto.sideMm,
+        anchoExteriorMm: producto.widthMm,
+        altoExteriorMm: producto.heightMm,
+        espesorTuboMm: producto.thicknessMm,
+      });
+
+      if (!Number.isFinite(pesoTotal) || pesoTotal <= 0) {
+        throw new Error('La calculadora de metales no pudo obtener un peso válido para el tubo.');
+      }
+
+      datosLinea = {
+        descripcion: producto.description,
+        cantidad: producto.quantity,
+        unidad: 'kg',
+        precioUnitario: producto.price,
+        pesoTotal,
+        tipoCalculo: 'peso',
+        largo: producto.lengthM,
+      };
+    } else if (producto.kind === 'meter') {
+      datosLinea = {
+        descripcion: producto.description,
+        cantidad: producto.quantity,
+        unidad: 'm',
+        precioUnitario: producto.price,
+        pesoTotal: 0,
+        tipoCalculo: 'metro',
+        largo: producto.lengthM,
+      };
+    } else if (producto.kind === 'plancha') {
+      const pesoTotal = calcularPesoTotalPlanchaAcero(
+        producto.quantity,
+        producto.lengthMm,
+        producto.widthMm,
+        producto.thicknessMm,
+      );
+
+      if (!Number.isFinite(pesoTotal) || pesoTotal <= 0) {
+        throw new Error('No se pudo calcular un peso total válido para la plancha.');
+      }
+
+      datosLinea = {
+        descripcion: producto.description,
+        cantidad: producto.quantity,
+        unidad: 'kg',
+        precioUnitario: producto.price,
+        pesoTotal,
+        tipoCalculo: 'plancha',
+        largo: producto.lengthMm,
+        ancho: producto.widthMm,
+        espesor: producto.thicknessMm,
+      };
+    } else if (producto.kind === 'manual-weight') {
+      datosLinea = {
+        descripcion: producto.description,
+        cantidad: 1,
+        unidad: 'kg',
+        precioUnitario: producto.price,
+        pesoTotal: producto.weightKg,
+        tipoCalculo: 'peso',
+      };
+    } else {
+      datosLinea = {
+        descripcion: producto.description,
+        cantidad: producto.quantity,
+        unidad: 'und',
+        precioUnitario: producto.price,
+        pesoTotal: 0,
+        tipoCalculo: 'unidad',
+      };
+    }
+
+    await agregarLineaPresupuesto(presupuestoActual.id, datosLinea);
+    await recargarPresupuestoActual(presupuestoActual.id);
+    await cargarPresupuestos();
+
+    setMensaje('');
+    setAvisoModal('Producto agregado por voz.');
+  }
+
   async function agregarProducto(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -1186,7 +1326,12 @@ function App() {
         return;
       }
 
-      pesoTotal = cantidad * largo * ancho * espesor * 0.00000785;
+      pesoTotal = calcularPesoTotalPlanchaAcero(
+        cantidad,
+        largo,
+        ancho,
+        espesor,
+      );
 
       if (!Number.isFinite(pesoTotal) || pesoTotal <= 0) {
         setMensaje('No se pudo calcular el peso total de la plancha.');
@@ -2401,6 +2546,7 @@ function App() {
               presupuestoId={presupuestoActual.id}
               onTranscriptionFinal={registrarTranscripcionExperimental}
               onEvaluation={guardarEvaluacionTranscripcion}
+              onAddProduct={agregarProductoDesdeVoz}
             />
           )}
 
@@ -3037,8 +3183,8 @@ function App() {
           </h1>
           {modoPresupuesto === 'voz' && (
             <p className="subtitle">
-              El flujo de presupuesto es el mismo. En esta etapa el micrófono
-              sólo transcribe y no agrega productos automáticamente.
+              El flujo de presupuesto es el mismo. Podés dictar un producto,
+              revisar la interpretación y agregarlo al presupuesto cuando esté completo.
             </p>
           )}
         </div>

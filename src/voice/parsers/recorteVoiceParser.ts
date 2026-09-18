@@ -39,7 +39,7 @@ function extractWeightKg(text: string): number | undefined {
   }
 
   const afterProduct = text.match(
-    /\brecortes?\b[^/]*?\b(?:peso\s+)?(\d+(?:,\d+)?)\s*kg\b/iu,
+    /\brecortes?\b[\s\S]*?\b(?:peso\s+)?(\d+(?:,\d+)?)\s*kg\b/iu,
   );
 
   if (!afterProduct) return undefined;

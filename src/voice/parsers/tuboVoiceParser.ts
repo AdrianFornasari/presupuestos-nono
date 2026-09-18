@@ -239,15 +239,29 @@ function extractCuadradoDimensions(text: string): {
     const first = parseLocalizedNumber(pair[1]);
     const second = parseLocalizedNumber(pair[2]);
 
+    // En un tubo cuadrado, “50 x 50” describe naturalmente los dos lados
+    // exteriores y deja el espesor pendiente. Conservamos también el atajo
+    // “50 x 2” como lado + espesor cuando ambos valores son distintos.
+    const equalSides =
+      first !== undefined &&
+      second !== undefined &&
+      Math.abs(first - second) < 0.0001;
+
+    if (explicitThickness !== undefined || equalSides) {
+      return {
+        sideMm: first,
+        thicknessMm: explicitThickness,
+        sidePair:
+          first !== undefined && second !== undefined
+            ? [first, second]
+            : undefined,
+      };
+    }
+
     return {
       sideMm: first,
-      thicknessMm: explicitThickness ?? second,
-      sidePair:
-        explicitThickness !== undefined &&
-        first !== undefined &&
-        second !== undefined
-          ? [first, second]
-          : undefined,
+      thicknessMm: second,
+      sidePair: undefined,
     };
   }
 

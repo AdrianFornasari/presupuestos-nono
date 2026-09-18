@@ -127,7 +127,10 @@ function extractVariantData(
   }
 
   const match = text.match(
-    new RegExp(`\\b${pattern}(?:\\s+de)?\\s+${NUMBER_PATTERN}\\s+(?:x|por)\\s+${NUMBER_PATTERN}(?=\\s|$)`, 'iu'),
+    new RegExp(
+      `\\b${pattern}(?:\\s+de)?\\s+${NUMBER_PATTERN}\\s+(?:(?:x|por)\\s+)?${NUMBER_PATTERN}(?=\\s|$)`,
+      'iu',
+    ),
   );
 
   return {

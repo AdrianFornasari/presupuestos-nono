@@ -18,7 +18,15 @@ import { parseMallaVoiceCommand } from '../parsers/mallaVoiceParser';
 import { parsePlanchaVoiceCommand } from '../parsers/planchaVoiceParser';
 import { parseRecorteVoiceCommand } from '../parsers/recorteVoiceParser';
 import { parseTuboVoiceCommand } from '../parsers/tuboVoiceParser';
+import {
+  applyPendingVoiceClarification,
+  createPendingVoiceProduct,
+  pendingVoiceMissingFieldLabel,
+} from '../pending/pendingVoiceProduct';
+import type { PendingVoiceProduct } from '../pending/pendingVoiceProduct';
 import { identifyVoiceProduct } from '../products/productVoiceDictionary';
+import { buildVoiceReadyProduct } from '../products/voiceReadyProduct';
+import type { VoiceReadyProduct } from '../products/voiceReadyProduct';
 import type {
   SpeechToTextError,
   VoiceCaptureStatus,
@@ -37,6 +45,7 @@ interface VoiceCapturePanelProps {
     evaluation: VoiceTranscriptionEvaluation,
     expectedText?: string,
   ) => Promise<void>;
+  onAddProduct?: (product: VoiceReadyProduct) => Promise<void>;
 }
 
 function textoEstado(status: VoiceCaptureStatus): string {
@@ -64,6 +73,7 @@ function VoiceCapturePanel({
   presupuestoId,
   onTranscriptionFinal,
   onEvaluation,
+  onAddProduct,
 }: VoiceCapturePanelProps) {
   const [status, setStatus] =
     useState<VoiceCaptureStatus>('idle');
@@ -75,27 +85,39 @@ function VoiceCapturePanel({
   const [evaluation, setEvaluation] =
     useState<VoiceTranscriptionEvaluation | null>(null);
   const [expectedText, setExpectedText] = useState('');
+  const [interpretationText, setInterpretationText] = useState('');
+  const [pendingProduct, setPendingProduct] =
+    useState<PendingVoiceProduct | null>(null);
+  const [clarificationApplied, setClarificationApplied] = useState(false);
+  const [completedPendingProduct, setCompletedPendingProduct] = useState<string | null>(null);
   const [savingEvaluation, setSavingEvaluation] = useState(false);
+  const [addingProduct, setAddingProduct] = useState(false);
+  const [addProductError, setAddProductError] = useState('');
+  const [lastAddedProduct, setLastAddedProduct] = useState('');
   const mountedRef = useRef(true);
 
   const supported = provider.isSupported();
   const normalizedText = normalizeVoiceText(finalText);
-  const productIdentification = identifyVoiceProduct(normalizedText);
-  const perfilCParseResult = parsePerfilCVoiceCommand(normalizedText);
-  const ipnIpeParseResult = parseIpnIpeVoiceCommand(normalizedText);
-  const heaHebWParseResult = parseHeaHebWVoiceCommand(normalizedText);
-  const upnUlParseResult = parseUpnUlVoiceCommand(normalizedText);
-  const perfilUParseResult = parsePerfilUVoiceCommand(normalizedText);
+  const effectiveInterpretationText = interpretationText || normalizedText;
+  const productIdentification = identifyVoiceProduct(effectiveInterpretationText);
+  const perfilCParseResult = parsePerfilCVoiceCommand(effectiveInterpretationText);
+  const ipnIpeParseResult = parseIpnIpeVoiceCommand(effectiveInterpretationText);
+  const heaHebWParseResult = parseHeaHebWVoiceCommand(effectiveInterpretationText);
+  const upnUlParseResult = parseUpnUlVoiceCommand(effectiveInterpretationText);
+  const perfilUParseResult = parsePerfilUVoiceCommand(effectiveInterpretationText);
   const anguloPlanchuelaParseResult =
-    parseAnguloPlanchuelaVoiceCommand(normalizedText);
+    parseAnguloPlanchuelaVoiceCommand(effectiveInterpretationText);
   const anguloPlanchuelaCanonicalType =
     anguloPlanchuelaParseResult.data?.canonicalType;
-  const barraParseResult = parseBarraVoiceCommand(normalizedText);
-  const tuboParseResult = parseTuboVoiceCommand(normalizedText);
-  const chapaTechoParseResult = parseChapaTechoVoiceCommand(normalizedText);
-  const planchaParseResult = parsePlanchaVoiceCommand(normalizedText);
-  const recorteParseResult = parseRecorteVoiceCommand(normalizedText);
-  const mallaParseResult = parseMallaVoiceCommand(normalizedText);
+  const barraParseResult = parseBarraVoiceCommand(effectiveInterpretationText);
+  const tuboParseResult = parseTuboVoiceCommand(effectiveInterpretationText);
+  const chapaTechoParseResult = parseChapaTechoVoiceCommand(effectiveInterpretationText);
+  const planchaParseResult = parsePlanchaVoiceCommand(effectiveInterpretationText);
+  const recorteParseResult = parseRecorteVoiceCommand(effectiveInterpretationText);
+  const mallaParseResult = parseMallaVoiceCommand(effectiveInterpretationText);
+  const readyProduct = effectiveInterpretationText
+    ? buildVoiceReadyProduct(effectiveInterpretationText)
+    : null;
   const visibleTranscript = [
     finalText.trim(),
     interimText.trim(),
@@ -121,6 +143,14 @@ function VoiceCapturePanel({
     setLogId(null);
     setEvaluation(null);
     setExpectedText('');
+    setClarificationApplied(false);
+    setAddProductError('');
+    setLastAddedProduct('');
+
+    if (!pendingProduct) {
+      setInterpretationText('');
+    }
+    setCompletedPendingProduct(null);
 
     await provider.start(
       {
@@ -146,6 +176,28 @@ function VoiceCapturePanel({
           if (!limpio) {
             setStatus('idle');
             return;
+          }
+
+          const normalizado = normalizeVoiceText(limpio);
+
+          if (pendingProduct) {
+            const clarification = applyPendingVoiceClarification(
+              pendingProduct,
+              normalizado,
+              limpio,
+            );
+
+            setInterpretationText(clarification.commandText);
+            setPendingProduct(clarification.pending);
+            setClarificationApplied(clarification.clarificationApplied);
+            setCompletedPendingProduct(
+              clarification.completedCanonicalType ?? null,
+            );
+          } else {
+            setInterpretationText(normalizado);
+            setPendingProduct(createPendingVoiceProduct(normalizado));
+            setClarificationApplied(false);
+            setCompletedPendingProduct(null);
           }
 
           setStatus('result');
@@ -199,6 +251,61 @@ function VoiceCapturePanel({
     setLogId(null);
     setEvaluation(null);
     setExpectedText('');
+    setInterpretationText('');
+    setPendingProduct(null);
+    setClarificationApplied(false);
+    setCompletedPendingProduct(null);
+    setAddProductError('');
+    setLastAddedProduct('');
+  }
+
+  function cancelarProductoPendiente() {
+    provider.abort();
+    setStatus('idle');
+    setFinalText('');
+    setInterimText('');
+    setError(null);
+    setInterpretationText('');
+    setPendingProduct(null);
+    setClarificationApplied(false);
+    setCompletedPendingProduct(null);
+  }
+
+  async function agregarProductoAlPresupuesto() {
+    if (!readyProduct || !onAddProduct || addingProduct) return;
+
+    setAddingProduct(true);
+    setAddProductError('');
+
+    try {
+      await onAddProduct(readyProduct);
+
+      if (!mountedRef.current) return;
+
+      setLastAddedProduct(readyProduct.description);
+      setStatus('idle');
+      setFinalText('');
+      setInterimText('');
+      setInterpretationText('');
+      setPendingProduct(null);
+      setClarificationApplied(false);
+      setCompletedPendingProduct(null);
+      setLogId(null);
+      setEvaluation(null);
+      setExpectedText('');
+    } catch (addError) {
+      if (!mountedRef.current) return;
+
+      setAddProductError(
+        addError instanceof Error
+          ? addError.message
+          : 'No se pudo agregar el producto al presupuesto.',
+      );
+    } finally {
+      if (mountedRef.current) {
+        setAddingProduct(false);
+      }
+    }
   }
 
   async function guardarEvaluacion(
@@ -280,20 +387,18 @@ function VoiceCapturePanel({
             fontSize: '0.85rem',
           }}
         >
-          Etapa 4.6 · Perfil U, Ángulo y Planchuela
+          Etapa 6 · Alta en presupuesto
         </span>
       </div>
 
       <p className="empty-text">
-        El micrófono mantiene la sesión activa hasta que pulses Detener. Si Chrome o
-        Android cierran internamente un tramo del reconocimiento, la captura se
-        reinicia automáticamente y conserva sólo los segmentos finales, sin
-        repetir hipótesis parciales. Se mantiene la normalización y los parsers de
-        Perfil C, tubos, chapas para techos, planchas, Recortes, Mallas, IPN e IPE.
-        Se agregan Perfil U, Ángulo alas iguales y Planchuela, resolviendo cada
-        variante contra la tabla maestra real. Ángulos y planchuelas conservan
-        las medidas imperiales del catálogo. La voz sólo estructura y valida datos;
-        no calcula peso, subtotal ni importe y todavía no agrega productos al presupuesto.
+        El micrófono mantiene la sesión activa hasta que pulses Detener. Todos los
+        parsers implementados siguen resolviendo contra la lógica y la tabla maestra
+        existentes. Cuando un producto queda incompleto, la interfaz muestra qué
+        entendió y qué datos faltan; los dictados siguientes se aplican al mismo producto
+        pendiente. En esta Etapa 6, cuando los datos quedan completos aparece un botón
+        para agregar el producto al presupuesto. El peso, subtotal e importe se calculan
+        exclusivamente con las reglas determinísticas actuales al confirmar el alta.
       </p>
 
       {!supported && (
@@ -398,6 +503,137 @@ function VoiceCapturePanel({
         </label>
       )}
 
+      {finalText &&
+        status === 'result' &&
+        effectiveInterpretationText &&
+        effectiveInterpretationText !== normalizedText && (
+          <label className="field-label">
+            Interpretación acumulada
+            <textarea
+              className="text-area"
+              rows={5}
+              readOnly
+              value={effectiveInterpretationText}
+              placeholder="El producto pendiente y sus aclaraciones aparecerán aquí..."
+              style={{ whiteSpace: 'pre-wrap' }}
+            />
+          </label>
+        )}
+
+      {pendingProduct && (
+        <div className="message-box" style={{ marginTop: '12px' }}>
+          <strong>Producto pendiente: {pendingProduct.canonicalType}</strong>
+
+          {clarificationApplied && (
+            <div style={{ marginTop: '8px' }}>
+              ✓ Aclaración aplicada al mismo producto.
+            </div>
+          )}
+
+          <div
+            style={{
+              marginTop: '10px',
+              border: '1px solid currentColor',
+              borderRadius: '10px',
+              padding: '10px',
+            }}
+          >
+            <div className="empty-text">Entendí:</div>
+            <div style={{ marginTop: '4px', fontWeight: 600 }}>
+              {pendingProduct.commandText}
+            </div>
+          </div>
+
+          <div style={{ marginTop: '10px' }}>
+            <strong>Falta:</strong>
+            <ul style={{ margin: '6px 0 0 20px', padding: 0 }}>
+              {pendingProduct.missingFields.map((field) => (
+                <li key={field}>
+                  {pendingVoiceMissingFieldLabel(pendingProduct, field)}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="empty-text" style={{ marginTop: '8px' }}>
+            Dictá solamente la información faltante. Si falta cantidad y no resulta
+            inequívoca, podés decir “cantidad” seguido del número. La respuesta se
+            aplicará a este mismo producto. Turnos de voz acumulados: {pendingProduct.turns}.
+          </div>
+
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={cancelarProductoPendiente}
+            style={{ marginTop: '10px' }}
+          >
+            Cancelar producto pendiente
+          </button>
+        </div>
+      )}
+
+      {clarificationApplied && !pendingProduct && status === 'result' && (
+        <div className="message-box" style={{ marginTop: '12px' }}>
+          <strong>
+            ✓ Producto completo{completedPendingProduct
+              ? `: ${completedPendingProduct}`
+              : ''}
+          </strong>
+
+          <div
+            style={{
+              marginTop: '10px',
+              border: '1px solid currentColor',
+              borderRadius: '10px',
+              padding: '10px',
+            }}
+          >
+            <div className="empty-text">Entendí:</div>
+            <div style={{ marginTop: '4px', fontWeight: 600 }}>
+              {effectiveInterpretationText}
+            </div>
+          </div>
+
+          <div style={{ marginTop: '10px' }}>
+            Estado: <strong>datos completos y listos para agregar</strong>.
+          </div>
+          <div className="empty-text" style={{ marginTop: '6px' }}>
+            Revisá los datos estructurados y usá “Agregar al presupuesto”.
+          </div>
+        </div>
+      )}
+
+      {readyProduct && status === 'result' && (
+        <div className="message-box" style={{ marginTop: '12px' }}>
+          <strong>✓ Producto listo para agregar al presupuesto</strong>
+          <div className="empty-text" style={{ marginTop: '6px' }}>
+            {readyProduct.description}
+          </div>
+
+          <button
+            type="button"
+            className="primary-button"
+            onClick={() => void agregarProductoAlPresupuesto()}
+            disabled={!onAddProduct || addingProduct}
+            style={{ marginTop: '10px' }}
+          >
+            {addingProduct ? 'Agregando...' : 'Agregar al presupuesto'}
+          </button>
+        </div>
+      )}
+
+      {addProductError && (
+        <div className="message-box" style={{ marginTop: '12px' }}>
+          {addProductError}
+        </div>
+      )}
+
+      {lastAddedProduct && (
+        <div className="message-box" style={{ marginTop: '12px' }}>
+          ✓ Producto agregado al presupuesto: <strong>{lastAddedProduct}</strong>.
+        </div>
+      )}
+
       {finalText && status === 'result' && (
         <div
           style={{
@@ -424,7 +660,7 @@ function VoiceCapturePanel({
                 ) : (
                   <div className="empty-text" style={{ marginTop: '6px' }}>
                     Familia encontrada en tabla maestra: {productIdentification.candidateProductIds.length} variantes candidatas.
-                    La variante exacta se resolverá en la Etapa 4.
+                    La variante exacta se valida en los datos estructurados de abajo.
                   </div>
                 )
               ) : (
@@ -536,7 +772,7 @@ function VoiceCapturePanel({
             {perfilCParseResult.status === 'matched' && (
               <div className="message-box" style={{ marginTop: '12px' }}>
                 Perfil C interpretado completamente y vinculado a una variante
-                real de la tabla maestra. Todavía no se agrega al presupuesto.
+                real de la tabla maestra. Está listo para agregar al presupuesto.
               </div>
             )}
 
@@ -647,8 +883,8 @@ function VoiceCapturePanel({
             {ipnIpeParseResult.status === 'matched' && (
               <div className="message-box" style={{ marginTop: '12px' }}>
                 {ipnIpeParseResult.data.canonicalType} interpretado completamente y
-                vinculado a una variante real de la tabla maestra. Todavía no se
-                calcula peso ni se agrega el producto al presupuesto.
+                vinculado a una variante real de la tabla maestra. Está listo para
+                agregar al presupuesto.
               </div>
             )}
 
@@ -768,8 +1004,8 @@ function VoiceCapturePanel({
             {heaHebWParseResult.status === 'matched' && (
               <div className="message-box" style={{ marginTop: '12px' }}>
                 {heaHebWParseResult.data.canonicalType} interpretado completamente y
-                vinculado a una variante real de la tabla maestra. Todavía no se
-                calcula peso ni se agrega el producto al presupuesto.
+                vinculado a una variante real de la tabla maestra. Está listo para
+                agregar al presupuesto.
               </div>
             )}
 
@@ -892,8 +1128,8 @@ function VoiceCapturePanel({
             {upnUlParseResult.status === 'matched' && (
               <div className="message-box" style={{ marginTop: '12px' }}>
                 {upnUlParseResult.data.canonicalType} interpretado completamente y
-                vinculado a una variante real de la tabla maestra. Todavía no se
-                calcula peso ni se agrega el producto al presupuesto.
+                vinculado a una variante real de la tabla maestra. Está listo para
+                agregar al presupuesto.
               </div>
             )}
 
@@ -1008,7 +1244,7 @@ function VoiceCapturePanel({
             {perfilUParseResult.status === 'matched' && (
               <div className="message-box" style={{ marginTop: '12px' }}>
                 Perfil U interpretado completamente y vinculado a una variante real
-                de la tabla maestra. Todavía no se calcula peso ni se agrega al presupuesto.
+                de la tabla maestra. Está listo para agregar al presupuesto.
               </div>
             )}
 
@@ -1121,8 +1357,8 @@ function VoiceCapturePanel({
             {anguloPlanchuelaParseResult.status === 'matched' && (
               <div className="message-box" style={{ marginTop: '12px' }}>
                 {anguloPlanchuelaParseResult.data.canonicalType} interpretado completamente
-                y vinculado a una variante real de la tabla maestra. Todavía no se calcula
-                peso ni se agrega al presupuesto.
+                y vinculado a una variante real de la tabla maestra. Está listo para
+                agregar al presupuesto.
               </div>
             )}
 
@@ -1235,8 +1471,8 @@ function VoiceCapturePanel({
             {barraParseResult.status === 'matched' && (
               <div className="message-box" style={{ marginTop: '12px' }}>
                 {barraParseResult.data.canonicalType} interpretada completamente y
-                vinculada a una variante real de la tabla maestra. Todavía no se
-                calcula peso ni se agrega el producto al presupuesto.
+                vinculada a una variante real de la tabla maestra. Está lista para
+                agregar al presupuesto.
               </div>
             )}
 
@@ -1469,8 +1705,8 @@ function VoiceCapturePanel({
               <div className="message-box" style={{ marginTop: '12px' }}>
                 Chapa interpretada completamente y vinculada al producto real
                 de la tabla maestra. El material queda como atributo del pedido.
-                Todavía no se calculan metros totales ni se agrega el producto al
-                presupuesto.
+                Está listo para agregar al presupuesto; los metros totales se calcularán
+                con la lógica determinística al confirmar.
               </div>
             )}
 
@@ -1581,8 +1817,7 @@ function VoiceCapturePanel({
               <div className="message-box" style={{ marginTop: '12px' }}>
                 Plancha interpretada completamente y vinculada al producto real
                 de la tabla maestra. Largo y ancho quedan expresados en mm, como
-                en el flujo convencional. Todavía no se calcula peso ni se agrega
-                el producto al presupuesto.
+                en el flujo convencional. Está lista para agregar al presupuesto.
               </div>
             )}
 
@@ -1731,8 +1966,8 @@ function VoiceCapturePanel({
             {mallaParseResult.status === 'matched' && (
               <div className="message-box" style={{ marginTop: '12px' }}>
                 Mallas interpretado completamente. Se cotiza por unidad y no
-                corresponde largo, peso ni calculadora. Todavía no se agrega el
-                producto al presupuesto.
+                corresponde largo, peso ni calculadora. Está listo para agregar al
+                presupuesto.
               </div>
             )}
 
