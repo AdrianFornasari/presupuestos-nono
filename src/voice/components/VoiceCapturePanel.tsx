@@ -27,6 +27,10 @@ import type { PendingVoiceProduct } from '../pending/pendingVoiceProduct';
 import { identifyVoiceProduct } from '../products/productVoiceDictionary';
 import { buildVoiceReadyProduct } from '../products/voiceReadyProduct';
 import type { VoiceReadyProduct } from '../products/voiceReadyProduct';
+import {
+  applyReadyVoiceProductCorrection,
+  readyVoiceCorrectionFieldLabel,
+} from '../corrections/readyVoiceProductCorrection';
 import type {
   SpeechToTextError,
   VoiceCaptureStatus,
@@ -94,6 +98,9 @@ function VoiceCapturePanel({
   const [addingProduct, setAddingProduct] = useState(false);
   const [addProductError, setAddProductError] = useState('');
   const [lastAddedProduct, setLastAddedProduct] = useState('');
+  const [correctionMode, setCorrectionMode] = useState(false);
+  const [correctionMessage, setCorrectionMessage] = useState('');
+  const [correctionError, setCorrectionError] = useState('');
   const mountedRef = useRef(true);
 
   const supported = provider.isSupported();
@@ -135,7 +142,17 @@ function VoiceCapturePanel({
     };
   }, [provider]);
 
-  async function iniciarDictado() {
+  async function iniciarDictado(mode: 'product' | 'correction' = 'product') {
+    const correctionBaseText = mode === 'correction'
+      ? effectiveInterpretationText
+      : '';
+    const correctionBaseProduct = mode === 'correction'
+      ? readyProduct
+      : null;
+
+    setCorrectionMode(mode === 'correction');
+    setCorrectionMessage('');
+    setCorrectionError('');
     setStatus('requesting-permission');
     setFinalText('');
     setInterimText('');
@@ -147,7 +164,7 @@ function VoiceCapturePanel({
     setAddProductError('');
     setLastAddedProduct('');
 
-    if (!pendingProduct) {
+    if (mode === 'product' && !pendingProduct) {
       setInterpretationText('');
     }
     setCompletedPendingProduct(null);
@@ -170,6 +187,10 @@ function VoiceCapturePanel({
 
           const limpio = text.trim();
 
+          if (mode === 'correction') {
+            setCorrectionMode(false);
+          }
+
           setFinalText(limpio);
           setInterimText('');
 
@@ -179,6 +200,66 @@ function VoiceCapturePanel({
           }
 
           const normalizado = normalizeVoiceText(limpio);
+
+          if (mode === 'correction' && correctionBaseText && correctionBaseProduct) {
+            const correction = applyReadyVoiceProductCorrection(
+              correctionBaseText,
+              correctionBaseProduct,
+              normalizado,
+              limpio,
+            );
+
+            if (correction.applied) {
+              const correctedReadyProduct = buildVoiceReadyProduct(
+                correction.commandText,
+              );
+
+              if (correctedReadyProduct) {
+                setInterpretationText(correction.commandText);
+                setPendingProduct(null);
+                setClarificationApplied(false);
+                setCompletedPendingProduct(null);
+                setCorrectionMessage(
+                  `Corrección aplicada: ${correction.appliedFields
+                    .map(readyVoiceCorrectionFieldLabel)
+                    .join(' · ')}.`,
+                );
+                setCorrectionError(
+                  correction.issues.length > 0
+                    ? correction.issues.join(' ')
+                    : '',
+                );
+              } else {
+                setInterpretationText(correctionBaseText);
+                setCorrectionError(
+                  'La corrección dejaría el producto incompleto o inválido. No se aplicó.',
+                );
+              }
+            } else {
+              setInterpretationText(correctionBaseText);
+              setCorrectionError(correction.issues.join(' '));
+            }
+
+            setCorrectionMode(false);
+            setStatus('result');
+
+            if (onTranscriptionFinal) {
+              void onTranscriptionFinal(
+                limpio,
+                presupuestoId,
+              ).then((id) => {
+                if (
+                  mountedRef.current &&
+                  typeof id === 'string' &&
+                  id
+                ) {
+                  setLogId(id);
+                }
+              });
+            }
+
+            return;
+          }
 
           if (pendingProduct) {
             const clarification = applyPendingVoiceClarification(
@@ -221,6 +302,8 @@ function VoiceCapturePanel({
         onError: (speechError) => {
           if (!mountedRef.current) return;
 
+          setCorrectionMode(false);
+
           if (speechError.code === 'aborted') {
             setStatus('idle');
             return;
@@ -257,6 +340,9 @@ function VoiceCapturePanel({
     setCompletedPendingProduct(null);
     setAddProductError('');
     setLastAddedProduct('');
+    setCorrectionMode(false);
+    setCorrectionMessage('');
+    setCorrectionError('');
   }
 
   function cancelarProductoPendiente() {
@@ -269,6 +355,14 @@ function VoiceCapturePanel({
     setPendingProduct(null);
     setClarificationApplied(false);
     setCompletedPendingProduct(null);
+    setCorrectionMode(false);
+    setCorrectionMessage('');
+    setCorrectionError('');
+  }
+
+  async function iniciarCorreccionProducto() {
+    if (!readyProduct || status === 'listening') return;
+    await iniciarDictado('correction');
   }
 
   async function agregarProductoAlPresupuesto() {
@@ -293,6 +387,9 @@ function VoiceCapturePanel({
       setLogId(null);
       setEvaluation(null);
       setExpectedText('');
+      setCorrectionMode(false);
+      setCorrectionMessage('');
+      setCorrectionError('');
     } catch (addError) {
       if (!mountedRef.current) return;
 
@@ -387,18 +484,19 @@ function VoiceCapturePanel({
             fontSize: '0.85rem',
           }}
         >
-          Etapa 6 · Alta en presupuesto
+          Etapa 7.1 · Corrección antes de agregar
         </span>
       </div>
 
       <p className="empty-text">
         El micrófono mantiene la sesión activa hasta que pulses Detener. Todos los
         parsers implementados siguen resolviendo contra la lógica y la tabla maestra
-        existentes. Cuando un producto queda incompleto, la interfaz muestra qué
-        entendió y qué datos faltan; los dictados siguientes se aplican al mismo producto
-        pendiente. En esta Etapa 6, cuando los datos quedan completos aparece un botón
-        para agregar el producto al presupuesto. El peso, subtotal e importe se calculan
-        exclusivamente con las reglas determinísticas actuales al confirmar el alta.
+        existentes. Cuando un producto queda incompleto, los dictados siguientes se
+        aplican al mismo producto pendiente. Cuando queda completo podés corregir por
+        voz cantidad, largo o precio antes de agregarlo; en Recortes también podés
+        corregir el peso manual. La corrección se vuelve a validar antes de aceptarse.
+        El peso, subtotal e importe se calculan exclusivamente con las reglas
+        determinísticas actuales al confirmar el alta.
       </p>
 
       {!supported && (
@@ -458,7 +556,9 @@ function VoiceCapturePanel({
       >
         <strong>
           {status === 'listening' ? '🔴 ' : ''}
-          {textoEstado(status)}
+          {correctionMode && status === 'listening'
+            ? 'Escuchando corrección...'
+            : textoEstado(status)}
         </strong>
       </div>
 
@@ -610,15 +710,49 @@ function VoiceCapturePanel({
             {readyProduct.description}
           </div>
 
-          <button
-            type="button"
-            className="primary-button"
-            onClick={() => void agregarProductoAlPresupuesto()}
-            disabled={!onAddProduct || addingProduct}
-            style={{ marginTop: '10px' }}
+          <div
+            style={{
+              display: 'flex',
+              gap: '10px',
+              flexWrap: 'wrap',
+              marginTop: '10px',
+            }}
           >
-            {addingProduct ? 'Agregando...' : 'Agregar al presupuesto'}
-          </button>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => void iniciarCorreccionProducto()}
+              disabled={addingProduct}
+            >
+              Corregir por voz
+            </button>
+
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => void agregarProductoAlPresupuesto()}
+              disabled={!onAddProduct || addingProduct}
+            >
+              {addingProduct ? 'Agregando...' : 'Agregar al presupuesto'}
+            </button>
+          </div>
+
+          <div className="empty-text" style={{ marginTop: '8px' }}>
+            Podés decir, por ejemplo: “cambiar el precio a uno seiscientos”,
+            “el largo es seis metros” o “son diez”.
+          </div>
+        </div>
+      )}
+
+      {correctionMessage && (
+        <div className="message-box" style={{ marginTop: '12px' }}>
+          ✓ {correctionMessage}
+        </div>
+      )}
+
+      {correctionError && (
+        <div className="message-box" style={{ marginTop: '12px' }}>
+          {correctionError}
         </div>
       )}
 
