@@ -72,8 +72,8 @@ function extractLengthCorrection(text: string): {
 } | undefined {
   const patterns = [
     /\bcambiar\s+(?:el\s+)?largo\s+(?:a|por)\s+(\d+(?:,\d+)?)\s*(m|mm)\b/iu,
-    /\bel\s+largo\s+es\s+(\d+(?:,\d+)?)\s*(m|mm)\b/iu,
-    /\blargo\s+(?:a\s+|es\s+)?(\d+(?:,\d+)?)\s*(m|mm)\b/iu,
+    /\bel\s+largo\s+es\s+(?:de\s+)?(\d+(?:,\d+)?)\s*(m|mm)\b/iu,
+    /\blargo\s+(?:a\s+|es\s+(?:de\s+)?|de\s+)?(\d+(?:,\d+)?)\s*(m|mm)\b/iu,
   ];
 
   for (const pattern of patterns) {
@@ -199,6 +199,28 @@ function replaceOrInsertLengthMeters(
 
   if (explicit.test(commandText)) {
     return commandText.replace(explicit, canonical).replace(/\s+/gu, ' ').trim();
+  }
+
+  // Los comandos creados desde voz suelen conservar el largo en lenguaje natural,
+  // por ejemplo: "... de 12 m a 1,500/kg". Si agregáramos simplemente
+  // "largo 6 m", quedarían dos largos y el parser podría seguir tomando el
+  // primero (12 m). Reemplazamos el último largo en metros previo al precio.
+  const priceMatch = PRICE_IN_COMMAND.exec(commandText);
+  const searchEnd = priceMatch?.index ?? commandText.length;
+  const prefix = commandText.slice(0, searchEnd);
+  const naturalLength = /\b(?:de\s+)?\d+(?:,\d+)?\s*m\b/giu;
+  const matches = Array.from(prefix.matchAll(naturalLength));
+  const lastMatch = matches.at(-1);
+
+  if (lastMatch && lastMatch.index !== undefined) {
+    return [
+      commandText.slice(0, lastMatch.index),
+      canonical,
+      commandText.slice(lastMatch.index + lastMatch[0].length),
+    ]
+      .join('')
+      .replace(/\s+/gu, ' ')
+      .trim();
   }
 
   return insertBeforePrice(commandText, canonical);
