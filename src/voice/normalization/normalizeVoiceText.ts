@@ -376,7 +376,7 @@ function normalizarPrecioCompactado(texto: string): string {
   // La corrección sólo se hace en contexto explícito de precio para no tocar
   // cantidades legítimas como "200 kg de recortes".
   const contextoUnidad =
-    '(?=\\s+(?:(?:el\\s+)?(?:kilo|kilos|kg|kilogramo|kilogramos)|(?:por\\s+)?(?:metro|metros|m)|(?:cada\\s+(?:una|uno)|por\\s+unidad|unidad|und))\\b)';
+    '(?=\\s+(?:(?:(?:el|del)\\s+)?(?:kilo|kilos|kg|kilogramo|kilogramos)|(?:por\\s+)?(?:metro|metros|m)|(?:cada\\s+(?:una|uno)|por\\s+unidad|unidad|und))\\b)';
 
   let resultado = texto.replace(
     new RegExp(
@@ -389,7 +389,7 @@ function normalizarPrecioCompactado(texto: string): string {
 
   resultado = resultado.replace(
     new RegExp(
-      `^\\s*([0-9])(\\d{2,3})\\s+((?:(?:el\\s+)?(?:kilo|kilos|kg|kilogramo|kilogramos)|(?:por\\s+)?(?:metro|metros|m)|(?:cada\\s+(?:una|uno)|por\\s+unidad|unidad|und)))\\s*[.!]?\\s*$`,
+      `^\\s*([0-9])(\\d{2,3})\\s+((?:(?:(?:el|del)\\s+)?(?:kilo|kilos|kg|kilogramo|kilogramos)|(?:por\\s+)?(?:metro|metros|m)|(?:cada\\s+(?:una|uno)|por\\s+unidad|unidad|und)))\\s*[.!]?\\s*$`,
       'iu',
     ),
     (_coincidencia, entero: string, decimales: string, unidad: string) =>
@@ -478,7 +478,7 @@ function normalizarUnidadesPrecio(texto: string): string {
 
   let resultado = texto.replace(
     new RegExp(
-      `\\b(a|precio)\\s+${precio}\\s+(?:(?:el|por)\\s+)?kg\\b`,
+      `\\b(a|precio)\\s+${precio}\\s+(?:(?:el|por|del)\\s+)?kg\\b`,
       'giu',
     ),
     (_coincidencia, prefijo: string, valor: string) =>
@@ -487,7 +487,7 @@ function normalizarUnidadesPrecio(texto: string): string {
 
   resultado = resultado.replace(
     new RegExp(
-      `\\b(a|precio)\\s+${precio}\\s+(?:(?:el|por)\\s+)?m\\b`,
+      `\\b(a|precio)\\s+${precio}\\s+(?:(?:el|por|del)\\s+)?m\\b`,
       'giu',
     ),
     (_coincidencia, prefijo: string, valor: string) =>
@@ -496,7 +496,7 @@ function normalizarUnidadesPrecio(texto: string): string {
 
   resultado = resultado.replace(
     new RegExp(
-      `^\\s*${precio}\\s+(?:el|por)\\s+kg\\s*[.!]?\\s*$`,
+      `^\\s*${precio}\\s+(?:el|por|del)\\s+kg\\s*[.!]?\\s*$`,
       'iu',
     ),
     (_coincidencia, valor: string) => `${formatearPrecioCanonico(valor)}/kg`,
@@ -504,7 +504,7 @@ function normalizarUnidadesPrecio(texto: string): string {
 
   resultado = resultado.replace(
     new RegExp(
-      `^\\s*${precio}\\s+(?:el|por)\\s+m\\s*[.!]?\\s*$`,
+      `^\\s*${precio}\\s+(?:el|por|del)\\s+m\\s*[.!]?\\s*$`,
       'iu',
     ),
     (_coincidencia, valor: string) => `${formatearPrecioCanonico(valor)}/m`,
@@ -567,7 +567,7 @@ function normalizarPrecioUnos(texto: string): string {
   // inequívoco de precio y con exactamente tres cifras se interpreta según
   // la convención habitual del proyecto: 1,500; 1,650; etc.
   return texto.replace(
-    /\b(a|precio)\s+unos\s+(\d{3})\s+(?:(?:el|por)\s+)?(kg|kilo|kilos|kilogramo|kilogramos|m|metro|metros)\b/giu,
+    /\b(a|precio)\s+unos\s+(\d{3})\s+(?:(?:el|por|del)\s+)?(kg|kilo|kilos|kilogramo|kilogramos|m|metro|metros)\b/giu,
     (_coincidencia, prefijo: string, decimales: string, unidad: string) => {
       const unidadNormalizada = /^(?:m|metro|metros)$/iu.test(unidad) ? 'm' : 'kg';
       return `${prefijo} 1,${decimales}/${unidadNormalizada}`;

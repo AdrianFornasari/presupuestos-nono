@@ -171,6 +171,137 @@ function unirSegmentos(segmentos: string[]): string {
     .trim();
 }
 
+function tokenizarParaComparacion(texto: string): string[] {
+  return texto
+    .toLocaleLowerCase('es-AR')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .split(/\s+/g)
+    .filter(Boolean);
+}
+
+function contarPrefijoComun(a: string[], b: string[]): number {
+  const limite = Math.min(a.length, b.length);
+  let cantidad = 0;
+
+  while (cantidad < limite && a[cantidad] === b[cantidad]) {
+    cantidad += 1;
+  }
+
+  return cantidad;
+}
+
+function contarSuperposicionFinalInicio(a: string[], b: string[]): number {
+  const limite = Math.min(a.length, b.length);
+
+  for (let cantidad = limite; cantidad >= 1; cantidad -= 1) {
+    const finalA = a.slice(a.length - cantidad);
+    const inicioB = b.slice(0, cantidad);
+
+    if (finalA.every((token, index) => token === inicioB[index])) {
+      return cantidad;
+    }
+  }
+
+  return 0;
+}
+
+/**
+ * Fusiona dos hipótesis del Web Speech API sin asumir que cada resultado
+ * "final" es un segmento independiente.
+ *
+ * En algunos Chrome/Android, durante una misma frase se emiten como finales
+ * hipótesis progresivas completas ("cinco", "cinco tubos", "cinco tubos
+ * cuadrados", ...). En escritorio, en cambio, pueden recibirse segmentos
+ * finales realmente independientes. Esta función distingue ambos patrones:
+ * reemplaza hipótesis acumulativas y concatena sólo continuaciones reales.
+ */
+function fusionarTextoReconocido(anterior: string, siguiente: string): string {
+  const previo = anterior.trim();
+  const nuevo = siguiente.trim();
+
+  if (!previo) return nuevo;
+  if (!nuevo) return previo;
+
+  const tokensPrevio = tokenizarParaComparacion(previo);
+  const tokensNuevo = tokenizarParaComparacion(nuevo);
+
+  if (tokensPrevio.length === 0) return nuevo;
+  if (tokensNuevo.length === 0) return previo;
+
+  const previoNormalizado = tokensPrevio.join(' ');
+  const nuevoNormalizado = tokensNuevo.join(' ');
+
+  if (previoNormalizado === nuevoNormalizado) {
+    return previo;
+  }
+
+  if (nuevoNormalizado.startsWith(`${previoNormalizado} `)) {
+    return nuevo;
+  }
+
+  if (previoNormalizado.startsWith(`${nuevoNormalizado} `)) {
+    return previo;
+  }
+
+  const prefijoComun = contarPrefijoComun(tokensPrevio, tokensNuevo);
+  const proporcionPrefijo =
+    prefijoComun / Math.max(1, Math.min(tokensPrevio.length, tokensNuevo.length));
+
+  // Android puede corregir una hipótesis acumulativa previa (por ejemplo,
+  // "50%" -> "50 por 50"). Si ambas frases comparten un prefijo fuerte y la
+  // nueva no es una regresión grande, la nueva reemplaza a la anterior.
+  if (
+    prefijoComun >= 2 &&
+    proporcionPrefijo >= 0.6 &&
+    tokensNuevo.length >= Math.floor(tokensPrevio.length * 0.75)
+  ) {
+    return nuevo;
+  }
+
+  const superposicion = contarSuperposicionFinalInicio(
+    tokensPrevio,
+    tokensNuevo,
+  );
+
+  if (superposicion > 0) {
+    const tokensOriginalesNuevo = nuevo.split(/\s+/g);
+    return unirSegmentos([
+      previo,
+      tokensOriginalesNuevo.slice(superposicion).join(' '),
+    ]);
+  }
+
+  return unirSegmentos([previo, nuevo]);
+}
+
+function combinarResultados(
+  resultados: BrowserSpeechRecognitionResultList,
+  usarFinales: boolean,
+): string {
+  let combinado = '';
+
+  for (let index = 0; index < resultados.length; index += 1) {
+    const resultado = resultados[index];
+
+    if (resultado.isFinal !== usarFinales) {
+      continue;
+    }
+
+    const transcript = resultado[0]?.transcript?.trim() ?? '';
+
+    if (!transcript) {
+      continue;
+    }
+
+    combinado = fusionarTextoReconocido(combinado, transcript);
+  }
+
+  return combinado;
+}
+
 export class BrowserSpeechProvider implements SpeechToTextProvider {
   readonly id = 'browser-speech';
   readonly displayName = 'Reconocimiento de voz del navegador';
@@ -179,7 +310,8 @@ export class BrowserSpeechProvider implements SpeechToTextProvider {
   private handlers: SpeechToTextSessionHandlers | null = null;
   private options: NormalizedSpeechOptions | null = null;
 
-  private finalSegments: string[] = [];
+  private committedFinalText = '';
+  private activeCycleFinalText = '';
   private interimText = '';
 
   private shouldKeepListening = false;
@@ -220,7 +352,8 @@ export class BrowserSpeechProvider implements SpeechToTextProvider {
       interimResults: options.interimResults ?? true,
     };
 
-    this.finalSegments = [];
+    this.committedFinalText = '';
+    this.activeCycleFinalText = '';
     this.interimText = '';
     this.shouldKeepListening = true;
     this.stopRequested = false;
@@ -286,7 +419,8 @@ export class BrowserSpeechProvider implements SpeechToTextProvider {
     this.recognition = null;
     this.handlers = null;
     this.options = null;
-    this.finalSegments = [];
+    this.committedFinalText = '';
+    this.activeCycleFinalText = '';
     this.interimText = '';
     this.fatalError = false;
     this.startNotified = false;
@@ -313,7 +447,8 @@ export class BrowserSpeechProvider implements SpeechToTextProvider {
     }
 
     const recognition = new SpeechRecognitionConstructor();
-    const processedFinalResultIndexes = new Set<number>();
+    this.activeCycleFinalText = '';
+    this.interimText = '';
 
     recognition.lang = this.options.language;
     recognition.continuous = this.options.continuous;
@@ -332,41 +467,12 @@ export class BrowserSpeechProvider implements SpeechToTextProvider {
         return;
       }
 
-      for (
-        let index = event.resultIndex;
-        index < event.results.length;
-        index += 1
-      ) {
-        const result = event.results[index];
-        const transcript = result[0]?.transcript?.trim() ?? '';
-
-        if (!transcript) {
-          continue;
-        }
-
-        if (result.isFinal && !processedFinalResultIndexes.has(index)) {
-          processedFinalResultIndexes.add(index);
-          this.finalSegments.push(transcript);
-        }
-      }
-
-      const interinos: string[] = [];
-
-      for (let index = 0; index < event.results.length; index += 1) {
-        const result = event.results[index];
-
-        if (result.isFinal) {
-          continue;
-        }
-
-        const transcript = result[0]?.transcript?.trim() ?? '';
-
-        if (transcript) {
-          interinos.push(transcript);
-        }
-      }
-
-      this.interimText = unirSegmentos(interinos);
+      // Se recalcula la hipótesis del ciclo completo en cada evento. Esto es
+      // deliberado: algunos Chrome/Android marcan como "finales" múltiples
+      // versiones progresivas de la misma frase. No deben acumularse como si
+      // fueran segmentos independientes.
+      this.activeCycleFinalText = combinarResultados(event.results, true);
+      this.interimText = combinarResultados(event.results, false);
       this.emitirActualizacion();
     };
 
@@ -406,6 +512,14 @@ export class BrowserSpeechProvider implements SpeechToTextProvider {
         this.recognition = null;
       }
 
+      if (this.activeCycleFinalText) {
+        this.committedFinalText = fusionarTextoReconocido(
+          this.committedFinalText,
+          this.activeCycleFinalText,
+        );
+      }
+
+      this.activeCycleFinalText = '';
       this.interimText = '';
 
       if (this.handlers) {
@@ -484,14 +598,20 @@ export class BrowserSpeechProvider implements SpeechToTextProvider {
 
   private emitirActualizacion(): void {
     this.handlers?.onUpdate({
-      finalText: unirSegmentos(this.finalSegments),
+      finalText: fusionarTextoReconocido(
+        this.committedFinalText,
+        this.activeCycleFinalText,
+      ),
       interimText: this.interimText,
     });
   }
 
   private finalizarSesion(): void {
     const currentHandlers = this.handlers;
-    const textoFinal = unirSegmentos(this.finalSegments);
+    const textoFinal = fusionarTextoReconocido(
+      this.committedFinalText,
+      this.activeCycleFinalText,
+    );
 
     this.limpiarEstado();
     currentHandlers?.onEnd(textoFinal);
@@ -510,7 +630,8 @@ export class BrowserSpeechProvider implements SpeechToTextProvider {
     this.recognition = null;
     this.handlers = null;
     this.options = null;
-    this.finalSegments = [];
+    this.committedFinalText = '';
+    this.activeCycleFinalText = '';
     this.interimText = '';
     this.shouldKeepListening = false;
     this.stopRequested = false;
