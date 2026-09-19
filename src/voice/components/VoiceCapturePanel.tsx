@@ -138,7 +138,9 @@ function VoiceCapturePanel({
   const [correctionMode, setCorrectionMode] = useState(false);
   const [correctionMessage, setCorrectionMessage] = useState('');
   const [correctionError, setCorrectionError] = useState('');
+  const [readyForNextProduct, setReadyForNextProduct] = useState(false);
   const mountedRef = useRef(true);
+  const nextProductButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const supported = provider.isSupported();
   const normalizedText = normalizeVoiceText(finalText);
@@ -179,6 +181,16 @@ function VoiceCapturePanel({
     };
   }, [provider]);
 
+  useEffect(() => {
+    if (!readyForNextProduct || status !== 'idle') return;
+
+    const frame = window.requestAnimationFrame(() => {
+      nextProductButtonRef.current?.focus();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [readyForNextProduct, status]);
+
   async function iniciarDictado(
     mode: 'product' | 'correction' | 'added-correction' | 'added-delete' = 'product',
   ) {
@@ -202,6 +214,7 @@ function VoiceCapturePanel({
     setCorrectionMode(mode === 'correction' || mode === 'added-correction');
     setCorrectionMessage('');
     setCorrectionError('');
+    setReadyForNextProduct(false);
     if (mode !== 'added-delete') {
       setPendingDeleteLine(null);
     }
@@ -388,6 +401,7 @@ function VoiceCapturePanel({
                 setPendingProduct(null);
                 setClarificationApplied(false);
                 setCompletedPendingProduct(null);
+                setReadyForNextProduct(true);
                 setStatus('idle');
               })
               .catch((updateError) => {
@@ -555,6 +569,7 @@ function VoiceCapturePanel({
     setCorrectionMode(false);
     setCorrectionMessage('');
     setCorrectionError('');
+    setReadyForNextProduct(false);
   }
 
   function cancelarProductoPendiente() {
@@ -570,6 +585,7 @@ function VoiceCapturePanel({
     setCorrectionMode(false);
     setCorrectionMessage('');
     setCorrectionError('');
+    setReadyForNextProduct(false);
   }
 
   async function iniciarCorreccionProducto() {
@@ -633,6 +649,7 @@ function VoiceCapturePanel({
       setPendingProduct(null);
       setClarificationApplied(false);
       setCompletedPendingProduct(null);
+      setReadyForNextProduct(true);
       setStatus('idle');
     } catch (deleteError) {
       if (!mountedRef.current) return;
@@ -690,6 +707,7 @@ function VoiceCapturePanel({
       setCorrectionMode(false);
       setCorrectionMessage('');
       setCorrectionError('');
+      setReadyForNextProduct(true);
     } catch (addError) {
       if (!mountedRef.current) return;
 
@@ -784,7 +802,7 @@ function VoiceCapturePanel({
             fontSize: '0.85rem',
           }}
         >
-          Etapa 7.3 · Eliminación de la última línea
+          Etapa 7.4 · Dictado continuo de productos
         </span>
       </div>
 
@@ -794,11 +812,10 @@ function VoiceCapturePanel({
         existentes. Cuando un producto queda incompleto, los dictados siguientes se
         aplican al mismo producto pendiente. Cuando queda completo podés corregir por
         voz cantidad, largo o precio antes de agregarlo; en Recortes también podés
-        corregir el peso manual. Después de agregarlo, también podés corregir por voz
-        esa misma última línea o pedir su eliminación. La eliminación nunca es inmediata:
-        primero se reconoce la orden y después tenés que confirmarla explícitamente.
-        Toda corrección se vuelve a validar y la línea se recalcula con las mismas reglas
-        determinísticas antes de actualizar IndexedDB.
+        corregir el peso manual. Después de agregar, corregir o eliminar una línea, la
+        pantalla vuelve automáticamente al estado “Listo para dictar otro producto”.
+        El micrófono no se activa solo: pulsá “Dictar siguiente producto” para continuar.
+        Las correcciones y eliminaciones siguen usando la misma línea real e IndexedDB.
       </p>
 
       {!supported && (
@@ -818,12 +835,13 @@ function VoiceCapturePanel({
       >
         {status !== 'listening' ? (
           <button
+            ref={nextProductButtonRef}
             type="button"
             className="primary-button"
             onClick={() => void iniciarDictado()}
             disabled={!supported || status === 'requesting-permission'}
           >
-            🎤 Dictar producto
+            {readyForNextProduct ? '🎤 Dictar siguiente producto' : '🎤 Dictar producto'}
           </button>
         ) : (
           <button
@@ -1042,6 +1060,17 @@ function VoiceCapturePanel({
           <div className="empty-text" style={{ marginTop: '8px' }}>
             Podés decir, por ejemplo: “cambiar el precio a uno seiscientos”,
             “el largo es seis metros” o “son diez”.
+          </div>
+        </div>
+      )}
+
+      {readyForNextProduct && status === 'idle' && !pendingDeleteLine && (
+        <div className="message-box" style={{ marginTop: '12px' }}>
+          <strong>✓ Listo para dictar otro producto</strong>
+          <div className="empty-text" style={{ marginTop: '6px' }}>
+            La acción anterior ya quedó resuelta. Podés seguir cargando otra línea sin
+            salir de esta pantalla. El micrófono sólo se activa cuando pulses “Dictar
+            siguiente producto”.
           </div>
         </div>
       )}
