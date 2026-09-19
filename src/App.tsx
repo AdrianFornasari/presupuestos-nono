@@ -1090,6 +1090,16 @@ function App() {
     setClienteDatosModificados(true);
   }
 
+  function abrirEdicionClienteDesdeVoz() {
+    setClienteEditando(true);
+    setClienteDatosModificados(false);
+    setMensaje('');
+
+    window.setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, 50);
+  }
+
   async function guardarCliente(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -2618,6 +2628,14 @@ function App() {
               onAddProduct={agregarProductoDesdeVoz}
               onCorrectAddedProduct={corregirProductoAgregadoDesdeVoz}
               onDeleteAddedProduct={eliminarProductoAgregadoDesdeVoz}
+              clienteNombre={presupuestoActual.clienteNombre}
+              cantidadLineas={lineas.length}
+              totalUsdTexto={formatearImporteUSD(presupuestoActual.total)}
+              clienteCambiosPendientes={clienteDatosModificados}
+              onEditClient={abrirEdicionClienteDesdeVoz}
+              onSharePdf={generarPdfCompartir}
+              onDownloadPdf={generarPdfDescarga}
+              onReturnToBudgetList={volverInicio}
             />
           )}
 

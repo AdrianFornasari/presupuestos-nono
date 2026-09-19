@@ -55,6 +55,14 @@ interface VoiceCapturePanelProps {
     product: VoiceReadyProduct,
   ) => Promise<void>;
   onDeleteAddedProduct?: (lineId: string) => Promise<void>;
+  clienteNombre?: string;
+  cantidadLineas?: number;
+  totalUsdTexto?: string;
+  clienteCambiosPendientes?: boolean;
+  onEditClient?: () => void;
+  onSharePdf?: () => Promise<void>;
+  onDownloadPdf?: () => Promise<void>;
+  onReturnToBudgetList?: () => void;
 }
 
 function esComandoEliminacionUltimaLinea(
@@ -103,6 +111,14 @@ function VoiceCapturePanel({
   onAddProduct,
   onCorrectAddedProduct,
   onDeleteAddedProduct,
+  clienteNombre = '',
+  cantidadLineas = 0,
+  totalUsdTexto = '0,00',
+  clienteCambiosPendientes = false,
+  onEditClient,
+  onSharePdf,
+  onDownloadPdf,
+  onReturnToBudgetList,
 }: VoiceCapturePanelProps) {
   const [status, setStatus] =
     useState<VoiceCaptureStatus>('idle');
@@ -139,6 +155,10 @@ function VoiceCapturePanel({
   const [correctionMessage, setCorrectionMessage] = useState('');
   const [correctionError, setCorrectionError] = useState('');
   const [readyForNextProduct, setReadyForNextProduct] = useState(false);
+  const [showFinalization, setShowFinalization] = useState(false);
+  const [finalizingAction, setFinalizingAction] = useState<'share' | 'download' | null>(null);
+  const [finalizationError, setFinalizationError] = useState('');
+  const [pdfCompleted, setPdfCompleted] = useState(false);
   const mountedRef = useRef(true);
   const nextProductButtonRef = useRef<HTMLButtonElement | null>(null);
 
@@ -171,6 +191,21 @@ function VoiceCapturePanel({
     .filter(Boolean)
     .join(' ')
     .trim();
+
+  const clienteCargado = Boolean(clienteNombre.trim());
+  const hayProductoEnCurso = Boolean(
+    pendingProduct ||
+      readyProduct ||
+      pendingDeleteLine ||
+      correctionMode ||
+      status === 'listening' ||
+      status === 'requesting-permission',
+  );
+  const presupuestoListoParaFinalizar =
+    clienteCargado &&
+    cantidadLineas > 0 &&
+    !clienteCambiosPendientes &&
+    !hayProductoEnCurso;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -211,6 +246,9 @@ function VoiceCapturePanel({
       ? lastAddedVoiceLine
       : null;
 
+    setShowFinalization(false);
+    setPdfCompleted(false);
+    setFinalizationError('');
     setCorrectionMode(mode === 'correction' || mode === 'added-correction');
     setCorrectionMessage('');
     setCorrectionError('');
@@ -570,6 +608,10 @@ function VoiceCapturePanel({
     setCorrectionMessage('');
     setCorrectionError('');
     setReadyForNextProduct(false);
+    setShowFinalization(false);
+    setFinalizingAction(null);
+    setFinalizationError('');
+    setPdfCompleted(false);
   }
 
   function cancelarProductoPendiente() {
@@ -723,6 +765,47 @@ function VoiceCapturePanel({
     }
   }
 
+  function abrirFinalizacionPresupuesto() {
+    provider.abort();
+    setShowFinalization(true);
+    setFinalizationError('');
+    setPdfCompleted(false);
+  }
+
+  async function ejecutarFinalizacionPdf(action: 'share' | 'download') {
+    if (!presupuestoListoParaFinalizar || finalizingAction) return;
+
+    const callback = action === 'share' ? onSharePdf : onDownloadPdf;
+
+    if (!callback) {
+      setFinalizationError('La acción de PDF no está disponible.');
+      return;
+    }
+
+    setFinalizingAction(action);
+    setFinalizationError('');
+
+    try {
+      await callback();
+
+      if (!mountedRef.current) return;
+
+      setPdfCompleted(true);
+    } catch (pdfError) {
+      if (!mountedRef.current) return;
+
+      setFinalizationError(
+        pdfError instanceof Error
+          ? pdfError.message
+          : 'No se pudo generar el PDF del presupuesto.',
+      );
+    } finally {
+      if (mountedRef.current) {
+        setFinalizingAction(null);
+      }
+    }
+  }
+
   async function guardarEvaluacion(
     nuevaEvaluacion: VoiceTranscriptionEvaluation,
   ) {
@@ -802,20 +885,18 @@ function VoiceCapturePanel({
             fontSize: '0.85rem',
           }}
         >
-          Etapa 7.4 · Dictado continuo de productos
+          Etapa 8 · Flujo completo del presupuesto
         </span>
       </div>
 
       <p className="empty-text">
-        El micrófono mantiene la sesión activa hasta que pulses Detener. Todos los
-        parsers implementados siguen resolviendo contra la lógica y la tabla maestra
-        existentes. Cuando un producto queda incompleto, los dictados siguientes se
-        aplican al mismo producto pendiente. Cuando queda completo podés corregir por
-        voz cantidad, largo o precio antes de agregarlo; en Recortes también podés
-        corregir el peso manual. Después de agregar, corregir o eliminar una línea, la
-        pantalla vuelve automáticamente al estado “Listo para dictar otro producto”.
-        El micrófono no se activa solo: pulsá “Dictar siguiente producto” para continuar.
-        Las correcciones y eliminaciones siguen usando la misma línea real e IndexedDB.
+        El flujo por voz ya comparte el presupuesto real: cliente, líneas, numeración,
+        IndexedDB, cálculos, historial y PDF. Podés dictar varios productos, completar
+        faltantes, corregir o eliminar la última línea y continuar sin salir de esta
+        pantalla. Cuando termines, usá “Revisar y finalizar presupuesto”: la app
+        comprobará cliente, productos y operaciones pendientes antes de habilitar el PDF.
+        Cada cambio se guarda en la tablet en el momento; no existe un segundo botón
+        “Guardar” ni una base separada para presupuestos por voz.
       </p>
 
       {!supported && (
@@ -1189,6 +1270,156 @@ function VoiceCapturePanel({
                 “borrar el último” o “cancelar ese producto”; después se pedirá confirmación.
               </div>
             </>
+          )}
+        </div>
+      )}
+
+      <div
+        style={{
+          marginTop: '16px',
+          borderTop: '1px solid currentColor',
+          paddingTop: '14px',
+        }}
+      >
+        <button
+          type="button"
+          className="primary-button"
+          onClick={abrirFinalizacionPresupuesto}
+          disabled={
+            status === 'listening' ||
+            status === 'requesting-permission' ||
+            addingProduct ||
+            updatingAddedProduct ||
+            deletingAddedProduct
+          }
+        >
+          Revisar y finalizar presupuesto
+        </button>
+      </div>
+
+      {showFinalization && (
+        <div className="message-box" style={{ marginTop: '12px' }}>
+          <strong>Finalización del presupuesto</strong>
+
+          <div
+            style={{
+              marginTop: '10px',
+              border: '1px solid currentColor',
+              borderRadius: '10px',
+              padding: '10px',
+            }}
+          >
+            <div>
+              {clienteCargado && !clienteCambiosPendientes ? '✓' : '⚠'} Cliente:{' '}
+              <strong>{clienteCargado ? clienteNombre.trim() : 'faltante'}</strong>
+            </div>
+            {clienteCambiosPendientes && (
+              <div className="empty-text" style={{ marginTop: '4px' }}>
+                Hay cambios del cliente todavía sin guardar.
+              </div>
+            )}
+
+            <div style={{ marginTop: '6px' }}>
+              {cantidadLineas > 0 ? '✓' : '⚠'} Productos agregados:{' '}
+              <strong>{cantidadLineas}</strong>
+            </div>
+
+            <div style={{ marginTop: '6px' }}>
+              Total: <strong>USD {totalUsdTexto}</strong>
+            </div>
+
+            <div style={{ marginTop: '6px' }}>
+              {!hayProductoEnCurso ? '✓' : '⚠'} Operación de voz:{' '}
+              <strong>{!hayProductoEnCurso ? 'sin pendientes' : 'pendiente de resolver'}</strong>
+            </div>
+
+            <div className="empty-text" style={{ marginTop: '8px' }}>
+              Guardado: cada cambio ya está persistido en IndexedDB.
+            </div>
+          </div>
+
+          {!clienteCargado || clienteCambiosPendientes ? (
+            <div style={{ marginTop: '10px' }}>
+              <div>
+                Antes de finalizar, {clienteCambiosPendientes
+                  ? 'guardá los cambios del cliente.'
+                  : 'cargá el nombre del cliente.'}
+              </div>
+              {onEditClient && (
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={onEditClient}
+                  style={{ marginTop: '8px' }}
+                >
+                  Cargar / editar cliente
+                </button>
+              )}
+            </div>
+          ) : cantidadLineas === 0 ? (
+            <div style={{ marginTop: '10px' }}>
+              Agregá al menos un producto antes de generar el PDF.
+            </div>
+          ) : hayProductoEnCurso ? (
+            <div style={{ marginTop: '10px' }}>
+              Terminá, agregá o cancelá el producto u operación pendiente antes de finalizar.
+            </div>
+          ) : (
+            <div
+              style={{
+                display: 'flex',
+                gap: '10px',
+                flexWrap: 'wrap',
+                marginTop: '10px',
+              }}
+            >
+              {onSharePdf && (
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => void ejecutarFinalizacionPdf('share')}
+                  disabled={Boolean(finalizingAction)}
+                >
+                  {finalizingAction === 'share'
+                    ? 'Generando...'
+                    : 'Generar y compartir PDF'}
+                </button>
+              )}
+
+              {onDownloadPdf && (
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => void ejecutarFinalizacionPdf('download')}
+                  disabled={Boolean(finalizingAction)}
+                >
+                  {finalizingAction === 'download'
+                    ? 'Generando...'
+                    : 'Generar y descargar PDF'}
+                </button>
+              )}
+            </div>
+          )}
+
+          {finalizationError && (
+            <div style={{ marginTop: '10px' }}>{finalizationError}</div>
+          )}
+
+          {pdfCompleted && (
+            <div style={{ marginTop: '12px' }}>
+              <strong>✓ PDF generado. Presupuesto listo y guardado en el historial.</strong>
+              {onReturnToBudgetList && (
+                <div style={{ marginTop: '10px' }}>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={onReturnToBudgetList}
+                  >
+                    Volver al historial de presupuestos
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}
