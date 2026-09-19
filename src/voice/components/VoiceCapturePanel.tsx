@@ -54,6 +54,25 @@ interface VoiceCapturePanelProps {
     lineId: string,
     product: VoiceReadyProduct,
   ) => Promise<void>;
+  onDeleteAddedProduct?: (lineId: string) => Promise<void>;
+}
+
+function esComandoEliminacionUltimaLinea(
+  normalizedText: string,
+  rawText: string,
+): boolean {
+  const texto = `${normalizedText} ${rawText}`
+    .toLocaleLowerCase('es-AR')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9ñ\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const tieneAccion = /\b(eliminar|elimina|borrar|borra|cancelar|cancela|quitar|quita|sacar|saca)\b/.test(texto);
+  const tieneObjetivo = /\b(ultimo|ultima|producto|linea|ese|esa)\b/.test(texto);
+
+  return tieneAccion && tieneObjetivo;
 }
 
 function textoEstado(status: VoiceCaptureStatus): string {
@@ -83,6 +102,7 @@ function VoiceCapturePanel({
   onEvaluation,
   onAddProduct,
   onCorrectAddedProduct,
+  onDeleteAddedProduct,
 }: VoiceCapturePanelProps) {
   const [status, setStatus] =
     useState<VoiceCaptureStatus>('idle');
@@ -109,6 +129,12 @@ function VoiceCapturePanel({
     commandText: string;
   } | null>(null);
   const [updatingAddedProduct, setUpdatingAddedProduct] = useState(false);
+  const [deletingAddedProduct, setDeletingAddedProduct] = useState(false);
+  const [pendingDeleteLine, setPendingDeleteLine] = useState<{
+    lineId: string;
+    description: string;
+    requestText: string;
+  } | null>(null);
   const [correctionMode, setCorrectionMode] = useState(false);
   const [correctionMessage, setCorrectionMessage] = useState('');
   const [correctionError, setCorrectionError] = useState('');
@@ -154,7 +180,7 @@ function VoiceCapturePanel({
   }, [provider]);
 
   async function iniciarDictado(
-    mode: 'product' | 'correction' | 'added-correction' = 'product',
+    mode: 'product' | 'correction' | 'added-correction' | 'added-delete' = 'product',
   ) {
     const correctionBaseText = mode === 'correction'
       ? effectiveInterpretationText
@@ -169,10 +195,16 @@ function VoiceCapturePanel({
     const correctionBaseLineId = mode === 'added-correction'
       ? lastAddedVoiceLine?.lineId
       : undefined;
+    const deletionBaseLine = mode === 'added-delete'
+      ? lastAddedVoiceLine
+      : null;
 
-    setCorrectionMode(mode !== 'product');
+    setCorrectionMode(mode === 'correction' || mode === 'added-correction');
     setCorrectionMessage('');
     setCorrectionError('');
+    if (mode !== 'added-delete') {
+      setPendingDeleteLine(null);
+    }
     setStatus('requesting-permission');
     setFinalText('');
     setInterimText('');
@@ -224,6 +256,52 @@ function VoiceCapturePanel({
           }
 
           const normalizado = normalizeVoiceText(limpio);
+
+          if (mode === 'added-delete') {
+            if (onTranscriptionFinal) {
+              void onTranscriptionFinal(
+                limpio,
+                presupuestoId,
+              ).then((id) => {
+                if (
+                  mountedRef.current &&
+                  typeof id === 'string' &&
+                  id
+                ) {
+                  setLogId(id);
+                }
+              });
+            }
+
+            if (!deletionBaseLine || !onDeleteAddedProduct) {
+              setCorrectionError(
+                'No se pudo identificar la última línea agregada por voz.',
+              );
+              setStatus('result');
+              return;
+            }
+
+            if (!esComandoEliminacionUltimaLinea(normalizado, limpio)) {
+              setCorrectionError(
+                'No entendí una orden de eliminación. Probá con “eliminar el último producto”, “borrar el último” o “cancelar ese producto”.',
+              );
+              setStatus('result');
+              return;
+            }
+
+            setPendingDeleteLine({
+              lineId: deletionBaseLine.lineId,
+              description: deletionBaseLine.product.description,
+              requestText: limpio,
+            });
+            setCorrectionMessage('');
+            setCorrectionError('');
+            setFinalText('');
+            setInterimText('');
+            setInterpretationText('');
+            setStatus('idle');
+            return;
+          }
 
           if (
             mode === 'added-correction' &&
@@ -472,6 +550,8 @@ function VoiceCapturePanel({
     setLastAddedProduct('');
     setLastAddedVoiceLine(null);
     setUpdatingAddedProduct(false);
+    setDeletingAddedProduct(false);
+    setPendingDeleteLine(null);
     setCorrectionMode(false);
     setCorrectionMessage('');
     setCorrectionError('');
@@ -502,12 +582,77 @@ function VoiceCapturePanel({
       !lastAddedVoiceLine ||
       !onCorrectAddedProduct ||
       status === 'listening' ||
-      updatingAddedProduct
+      updatingAddedProduct ||
+      deletingAddedProduct
     ) {
       return;
     }
 
     await iniciarDictado('added-correction');
+  }
+
+  async function iniciarEliminacionUltimaLinea() {
+    if (
+      !lastAddedVoiceLine ||
+      !onDeleteAddedProduct ||
+      status === 'listening' ||
+      updatingAddedProduct ||
+      deletingAddedProduct
+    ) {
+      return;
+    }
+
+    setPendingDeleteLine(null);
+    await iniciarDictado('added-delete');
+  }
+
+  async function confirmarEliminacionUltimaLinea() {
+    if (
+      !pendingDeleteLine ||
+      !onDeleteAddedProduct ||
+      deletingAddedProduct
+    ) {
+      return;
+    }
+
+    setDeletingAddedProduct(true);
+    setCorrectionError('');
+
+    try {
+      await onDeleteAddedProduct(pendingDeleteLine.lineId);
+
+      if (!mountedRef.current) return;
+
+      setPendingDeleteLine(null);
+      setLastAddedVoiceLine(null);
+      setLastAddedProduct('');
+      setCorrectionMessage('Última línea eliminada del presupuesto.');
+      setFinalText('');
+      setInterimText('');
+      setInterpretationText('');
+      setPendingProduct(null);
+      setClarificationApplied(false);
+      setCompletedPendingProduct(null);
+      setStatus('idle');
+    } catch (deleteError) {
+      if (!mountedRef.current) return;
+
+      setCorrectionError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : 'No se pudo eliminar la última línea del presupuesto.',
+      );
+    } finally {
+      if (mountedRef.current) {
+        setDeletingAddedProduct(false);
+      }
+    }
+  }
+
+  function cancelarEliminacionUltimaLinea() {
+    setPendingDeleteLine(null);
+    setCorrectionMessage('Eliminación cancelada.');
+    setCorrectionError('');
   }
 
   async function agregarProductoAlPresupuesto() {
@@ -639,7 +784,7 @@ function VoiceCapturePanel({
             fontSize: '0.85rem',
           }}
         >
-          Etapa 7.2 · Corrección de la última línea
+          Etapa 7.3 · Eliminación de la última línea
         </span>
       </div>
 
@@ -650,8 +795,10 @@ function VoiceCapturePanel({
         aplican al mismo producto pendiente. Cuando queda completo podés corregir por
         voz cantidad, largo o precio antes de agregarlo; en Recortes también podés
         corregir el peso manual. Después de agregarlo, también podés corregir por voz
-        esa misma última línea. Toda corrección se vuelve a validar y la línea se
-        recalcula con las mismas reglas determinísticas antes de actualizar IndexedDB.
+        esa misma última línea o pedir su eliminación. La eliminación nunca es inmediata:
+        primero se reconoce la orden y después tenés que confirmarla explícitamente.
+        Toda corrección se vuelve a validar y la línea se recalcula con las mismas reglas
+        determinísticas antes de actualizar IndexedDB.
       </p>
 
       {!supported && (
@@ -899,6 +1046,44 @@ function VoiceCapturePanel({
         </div>
       )}
 
+      {pendingDeleteLine && (
+        <div className="message-box" style={{ marginTop: '12px' }}>
+          <strong>Confirmar eliminación</strong>
+          <div style={{ marginTop: '8px' }}>
+            Se eliminará: <strong>{pendingDeleteLine.description}</strong>.
+          </div>
+          <div className="empty-text" style={{ marginTop: '6px' }}>
+            Comando reconocido: “{pendingDeleteLine.requestText}”. La línea todavía no
+            fue borrada.
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              gap: '10px',
+              flexWrap: 'wrap',
+              marginTop: '10px',
+            }}
+          >
+            <button
+              type="button"
+              className="danger-button"
+              onClick={() => void confirmarEliminacionUltimaLinea()}
+              disabled={deletingAddedProduct}
+            >
+              {deletingAddedProduct ? 'Eliminando...' : 'Confirmar eliminación'}
+            </button>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={cancelarEliminacionUltimaLinea}
+              disabled={deletingAddedProduct}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
       {correctionMessage && (
         <div className="message-box" style={{ marginTop: '12px' }}>
           ✓ {correctionMessage}
@@ -923,26 +1108,56 @@ function VoiceCapturePanel({
             ✓ Producto agregado al presupuesto: <strong>{lastAddedProduct}</strong>.
           </div>
 
-          {lastAddedVoiceLine && onCorrectAddedProduct && (
+          {lastAddedVoiceLine && (onCorrectAddedProduct || onDeleteAddedProduct) && (
             <>
-              <button
-                type="button"
-                className="secondary-button"
-                style={{ marginTop: '10px' }}
-                onClick={() => void iniciarCorreccionUltimaLinea()}
-                disabled={
-                  status === 'listening' ||
-                  addingProduct ||
-                  updatingAddedProduct
-                }
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '10px',
+                  flexWrap: 'wrap',
+                  marginTop: '10px',
+                }}
               >
-                {updatingAddedProduct
-                  ? 'Actualizando...'
-                  : 'Corregir última línea por voz'}
-              </button>
+                {onCorrectAddedProduct && (
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => void iniciarCorreccionUltimaLinea()}
+                    disabled={
+                      status === 'listening' ||
+                      addingProduct ||
+                      updatingAddedProduct ||
+                      deletingAddedProduct ||
+                      Boolean(pendingDeleteLine)
+                    }
+                  >
+                    {updatingAddedProduct
+                      ? 'Actualizando...'
+                      : 'Corregir última línea por voz'}
+                  </button>
+                )}
+
+                {onDeleteAddedProduct && (
+                  <button
+                    type="button"
+                    className="danger-button"
+                    onClick={() => void iniciarEliminacionUltimaLinea()}
+                    disabled={
+                      status === 'listening' ||
+                      addingProduct ||
+                      updatingAddedProduct ||
+                      deletingAddedProduct ||
+                      Boolean(pendingDeleteLine)
+                    }
+                  >
+                    Eliminar última línea por voz
+                  </button>
+                )}
+              </div>
               <div className="empty-text" style={{ marginTop: '8px' }}>
                 Podés corregir cantidad, largo o precio. En Recortes también podés
-                corregir el peso manual. La línea se recalcula antes de guardarse.
+                corregir el peso manual. Para eliminar, decí “eliminar el último producto”,
+                “borrar el último” o “cancelar ese producto”; después se pedirá confirmación.
               </div>
             </>
           )}

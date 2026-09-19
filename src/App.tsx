@@ -1475,12 +1475,13 @@ function App() {
     setAvisoModal('Producto agregado.');
   }
 
-  async function borrarLinea(lineaId: string) {
-    if (!presupuestoActual) return;
-
-    const confirmar = window.confirm('¿Eliminar esta línea del presupuesto?');
-
-    if (!confirmar) return;
+  async function eliminarLineaConfirmada(
+    lineaId: string,
+    mensajeExito: string,
+  ): Promise<void> {
+    if (!presupuestoActual) {
+      throw new Error('No hay un presupuesto activo para eliminar el producto.');
+    }
 
     if (lineaEnEdicion?.id === lineaId) {
       setLineaEnEdicion(null);
@@ -1491,7 +1492,22 @@ function App() {
     await eliminarLineaPresupuesto(presupuestoActual.id, lineaId);
     await recargarPresupuestoActual(presupuestoActual.id);
     await cargarPresupuestos();
-    setMensaje('Producto eliminado.');
+    setMensaje(mensajeExito);
+  }
+
+  async function borrarLinea(lineaId: string) {
+    if (!presupuestoActual) return;
+
+    const confirmar = window.confirm('¿Eliminar esta línea del presupuesto?');
+
+    if (!confirmar) return;
+
+    await eliminarLineaConfirmada(lineaId, 'Producto eliminado.');
+  }
+
+  async function eliminarProductoAgregadoDesdeVoz(lineaId: string): Promise<void> {
+    await eliminarLineaConfirmada(lineaId, '');
+    setAvisoModal('Último producto eliminado por voz.');
   }
 
   async function generarPdfDescarga() {
@@ -2601,6 +2617,7 @@ function App() {
               onEvaluation={guardarEvaluacionTranscripcion}
               onAddProduct={agregarProductoDesdeVoz}
               onCorrectAddedProduct={corregirProductoAgregadoDesdeVoz}
+              onDeleteAddedProduct={eliminarProductoAgregadoDesdeVoz}
             />
           )}
 
