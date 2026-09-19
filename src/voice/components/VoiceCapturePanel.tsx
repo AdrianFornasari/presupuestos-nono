@@ -49,7 +49,11 @@ interface VoiceCapturePanelProps {
     evaluation: VoiceTranscriptionEvaluation,
     expectedText?: string,
   ) => Promise<void>;
-  onAddProduct?: (product: VoiceReadyProduct) => Promise<void>;
+  onAddProduct?: (product: VoiceReadyProduct) => Promise<string | undefined>;
+  onCorrectAddedProduct?: (
+    lineId: string,
+    product: VoiceReadyProduct,
+  ) => Promise<void>;
 }
 
 function textoEstado(status: VoiceCaptureStatus): string {
@@ -78,6 +82,7 @@ function VoiceCapturePanel({
   onTranscriptionFinal,
   onEvaluation,
   onAddProduct,
+  onCorrectAddedProduct,
 }: VoiceCapturePanelProps) {
   const [status, setStatus] =
     useState<VoiceCaptureStatus>('idle');
@@ -98,6 +103,12 @@ function VoiceCapturePanel({
   const [addingProduct, setAddingProduct] = useState(false);
   const [addProductError, setAddProductError] = useState('');
   const [lastAddedProduct, setLastAddedProduct] = useState('');
+  const [lastAddedVoiceLine, setLastAddedVoiceLine] = useState<{
+    lineId: string;
+    product: VoiceReadyProduct;
+    commandText: string;
+  } | null>(null);
+  const [updatingAddedProduct, setUpdatingAddedProduct] = useState(false);
   const [correctionMode, setCorrectionMode] = useState(false);
   const [correctionMessage, setCorrectionMessage] = useState('');
   const [correctionError, setCorrectionError] = useState('');
@@ -142,15 +153,24 @@ function VoiceCapturePanel({
     };
   }, [provider]);
 
-  async function iniciarDictado(mode: 'product' | 'correction' = 'product') {
+  async function iniciarDictado(
+    mode: 'product' | 'correction' | 'added-correction' = 'product',
+  ) {
     const correctionBaseText = mode === 'correction'
       ? effectiveInterpretationText
-      : '';
+      : mode === 'added-correction'
+        ? lastAddedVoiceLine?.commandText ?? ''
+        : '';
     const correctionBaseProduct = mode === 'correction'
       ? readyProduct
-      : null;
+      : mode === 'added-correction'
+        ? lastAddedVoiceLine?.product ?? null
+        : null;
+    const correctionBaseLineId = mode === 'added-correction'
+      ? lastAddedVoiceLine?.lineId
+      : undefined;
 
-    setCorrectionMode(mode === 'correction');
+    setCorrectionMode(mode !== 'product');
     setCorrectionMessage('');
     setCorrectionError('');
     setStatus('requesting-permission');
@@ -162,7 +182,11 @@ function VoiceCapturePanel({
     setExpectedText('');
     setClarificationApplied(false);
     setAddProductError('');
-    setLastAddedProduct('');
+
+    if (mode === 'product') {
+      setLastAddedProduct('');
+      setLastAddedVoiceLine(null);
+    }
 
     if (mode === 'product' && !pendingProduct) {
       setInterpretationText('');
@@ -187,7 +211,7 @@ function VoiceCapturePanel({
 
           const limpio = text.trim();
 
-          if (mode === 'correction') {
+          if (mode !== 'product') {
             setCorrectionMode(false);
           }
 
@@ -200,6 +224,112 @@ function VoiceCapturePanel({
           }
 
           const normalizado = normalizeVoiceText(limpio);
+
+          if (
+            mode === 'added-correction' &&
+            correctionBaseText &&
+            correctionBaseProduct
+          ) {
+            const correction = applyReadyVoiceProductCorrection(
+              correctionBaseText,
+              correctionBaseProduct,
+              normalizado,
+              limpio,
+            );
+
+            if (onTranscriptionFinal) {
+              void onTranscriptionFinal(
+                limpio,
+                presupuestoId,
+              ).then((id) => {
+                if (
+                  mountedRef.current &&
+                  typeof id === 'string' &&
+                  id
+                ) {
+                  setLogId(id);
+                }
+              });
+            }
+
+            if (!correction.applied) {
+              setCorrectionError(correction.issues.join(' '));
+              setStatus('result');
+              return;
+            }
+
+            const correctedReadyProduct = buildVoiceReadyProduct(
+              correction.commandText,
+            );
+
+            if (!correctedReadyProduct) {
+              setCorrectionError(
+                'La corrección dejaría la línea incompleta o inválida. No se aplicó.',
+              );
+              setStatus('result');
+              return;
+            }
+
+            if (!correctionBaseLineId || !onCorrectAddedProduct) {
+              setCorrectionError(
+                'No se pudo identificar la línea agregada para actualizarla.',
+              );
+              setStatus('result');
+              return;
+            }
+
+            setUpdatingAddedProduct(true);
+            setStatus('result');
+
+            void onCorrectAddedProduct(
+              correctionBaseLineId,
+              correctedReadyProduct,
+            )
+              .then(() => {
+                if (!mountedRef.current) return;
+
+                setLastAddedVoiceLine({
+                  lineId: correctionBaseLineId,
+                  product: correctedReadyProduct,
+                  commandText: correction.commandText,
+                });
+                setLastAddedProduct(correctedReadyProduct.description);
+                setCorrectionMessage(
+                  `Última línea actualizada: ${correction.appliedFields
+                    .map(readyVoiceCorrectionFieldLabel)
+                    .join(' · ')}.`,
+                );
+                setCorrectionError(
+                  correction.issues.length > 0
+                    ? correction.issues.join(' ')
+                    : '',
+                );
+                setFinalText('');
+                setInterimText('');
+                setInterpretationText('');
+                setPendingProduct(null);
+                setClarificationApplied(false);
+                setCompletedPendingProduct(null);
+                setStatus('idle');
+              })
+              .catch((updateError) => {
+                if (!mountedRef.current) return;
+
+                setCorrectionError(
+                  updateError instanceof Error
+                    ? updateError.message
+                    : 'No se pudo actualizar la última línea del presupuesto.',
+                );
+                setStatus('result');
+              })
+              .finally(() => {
+                if (mountedRef.current) {
+                  setUpdatingAddedProduct(false);
+                }
+              });
+
+            return;
+          }
 
           if (mode === 'correction' && correctionBaseText && correctionBaseProduct) {
             const correction = applyReadyVoiceProductCorrection(
@@ -340,6 +470,8 @@ function VoiceCapturePanel({
     setCompletedPendingProduct(null);
     setAddProductError('');
     setLastAddedProduct('');
+    setLastAddedVoiceLine(null);
+    setUpdatingAddedProduct(false);
     setCorrectionMode(false);
     setCorrectionMessage('');
     setCorrectionError('');
@@ -365,6 +497,19 @@ function VoiceCapturePanel({
     await iniciarDictado('correction');
   }
 
+  async function iniciarCorreccionUltimaLinea() {
+    if (
+      !lastAddedVoiceLine ||
+      !onCorrectAddedProduct ||
+      status === 'listening' ||
+      updatingAddedProduct
+    ) {
+      return;
+    }
+
+    await iniciarDictado('added-correction');
+  }
+
   async function agregarProductoAlPresupuesto() {
     if (!readyProduct || !onAddProduct || addingProduct) return;
 
@@ -372,11 +517,21 @@ function VoiceCapturePanel({
     setAddProductError('');
 
     try {
-      await onAddProduct(readyProduct);
+      const commandText = effectiveInterpretationText;
+      const lineId = await onAddProduct(readyProduct);
 
       if (!mountedRef.current) return;
 
       setLastAddedProduct(readyProduct.description);
+      setLastAddedVoiceLine(
+        lineId
+          ? {
+              lineId,
+              product: readyProduct,
+              commandText,
+            }
+          : null,
+      );
       setStatus('idle');
       setFinalText('');
       setInterimText('');
@@ -484,7 +639,7 @@ function VoiceCapturePanel({
             fontSize: '0.85rem',
           }}
         >
-          Etapa 7.1 · Corrección antes de agregar
+          Etapa 7.2 · Corrección de la última línea
         </span>
       </div>
 
@@ -494,9 +649,9 @@ function VoiceCapturePanel({
         existentes. Cuando un producto queda incompleto, los dictados siguientes se
         aplican al mismo producto pendiente. Cuando queda completo podés corregir por
         voz cantidad, largo o precio antes de agregarlo; en Recortes también podés
-        corregir el peso manual. La corrección se vuelve a validar antes de aceptarse.
-        El peso, subtotal e importe se calculan exclusivamente con las reglas
-        determinísticas actuales al confirmar el alta.
+        corregir el peso manual. Después de agregarlo, también podés corregir por voz
+        esa misma última línea. Toda corrección se vuelve a validar y la línea se
+        recalcula con las mismas reglas determinísticas antes de actualizar IndexedDB.
       </p>
 
       {!supported && (
@@ -764,7 +919,33 @@ function VoiceCapturePanel({
 
       {lastAddedProduct && (
         <div className="message-box" style={{ marginTop: '12px' }}>
-          ✓ Producto agregado al presupuesto: <strong>{lastAddedProduct}</strong>.
+          <div>
+            ✓ Producto agregado al presupuesto: <strong>{lastAddedProduct}</strong>.
+          </div>
+
+          {lastAddedVoiceLine && onCorrectAddedProduct && (
+            <>
+              <button
+                type="button"
+                className="secondary-button"
+                style={{ marginTop: '10px' }}
+                onClick={() => void iniciarCorreccionUltimaLinea()}
+                disabled={
+                  status === 'listening' ||
+                  addingProduct ||
+                  updatingAddedProduct
+                }
+              >
+                {updatingAddedProduct
+                  ? 'Actualizando...'
+                  : 'Corregir última línea por voz'}
+              </button>
+              <div className="empty-text" style={{ marginTop: '8px' }}>
+                Podés corregir cantidad, largo o precio. En Recortes también podés
+                corregir el peso manual. La línea se recalcula antes de guardarse.
+              </div>
+            </>
+          )}
         </div>
       )}
 

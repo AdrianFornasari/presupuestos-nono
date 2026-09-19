@@ -115,6 +115,135 @@ function esTipoSinSubproducto(tipo: string): boolean {
   );
 }
 
+
+interface DatosLineaDesdeVoz {
+  descripcion: string;
+  cantidad: number;
+  unidad: string;
+  precioUnitario: number;
+  pesoTotal: number;
+  tipoCalculo: TipoCalculoLinea;
+  largo?: number;
+  ancho?: number;
+  espesor?: number;
+  masaNominal?: number;
+}
+
+function construirDatosLineaDesdeProductoVoz(
+  producto: VoiceReadyProduct,
+): DatosLineaDesdeVoz {
+  if (producto.kind === 'catalog-weight') {
+    const pesoTotal = calcularPesoTotalProductoProveedor(
+      producto.quantity,
+      producto.lengthM,
+      producto.massNominalKgM,
+    );
+
+    if (!Number.isFinite(pesoTotal) || pesoTotal <= 0) {
+      throw new Error(
+        'No se pudo calcular un peso total válido para el producto de tabla.',
+      );
+    }
+
+    return {
+      descripcion: producto.description,
+      cantidad: producto.quantity,
+      unidad: 'kg',
+      precioUnitario: producto.price,
+      pesoTotal,
+      tipoCalculo: 'peso',
+      largo: producto.lengthM,
+      masaNominal: producto.massNominalKgM,
+    };
+  }
+
+  if (producto.kind === 'tube') {
+    const pesoTotal = calcularPesoTotalTuboCalculadora({
+      forma: producto.calculatorShape,
+      cantidad: producto.quantity,
+      largoM: producto.lengthM,
+      diametroExteriorMm: producto.diameterMm,
+      ladoExteriorMm: producto.sideMm,
+      anchoExteriorMm: producto.widthMm,
+      altoExteriorMm: producto.heightMm,
+      espesorTuboMm: producto.thicknessMm,
+    });
+
+    if (!Number.isFinite(pesoTotal) || pesoTotal <= 0) {
+      throw new Error(
+        'La calculadora de metales no pudo obtener un peso válido para el tubo.',
+      );
+    }
+
+    return {
+      descripcion: producto.description,
+      cantidad: producto.quantity,
+      unidad: 'kg',
+      precioUnitario: producto.price,
+      pesoTotal,
+      tipoCalculo: 'peso',
+      largo: producto.lengthM,
+    };
+  }
+
+  if (producto.kind === 'meter') {
+    return {
+      descripcion: producto.description,
+      cantidad: producto.quantity,
+      unidad: 'm',
+      precioUnitario: producto.price,
+      pesoTotal: 0,
+      tipoCalculo: 'metro',
+      largo: producto.lengthM,
+    };
+  }
+
+  if (producto.kind === 'plancha') {
+    const pesoTotal = calcularPesoTotalPlanchaAcero(
+      producto.quantity,
+      producto.lengthMm,
+      producto.widthMm,
+      producto.thicknessMm,
+    );
+
+    if (!Number.isFinite(pesoTotal) || pesoTotal <= 0) {
+      throw new Error('No se pudo calcular un peso total válido para la plancha.');
+    }
+
+    return {
+      descripcion: producto.description,
+      cantidad: producto.quantity,
+      unidad: 'kg',
+      precioUnitario: producto.price,
+      pesoTotal,
+      tipoCalculo: 'plancha',
+      largo: producto.lengthMm,
+      ancho: producto.widthMm,
+      espesor: producto.thicknessMm,
+    };
+  }
+
+  if (producto.kind === 'manual-weight') {
+    return {
+      descripcion: producto.description,
+      cantidad: 1,
+      unidad: 'kg',
+      precioUnitario: producto.price,
+      pesoTotal: producto.weightKg,
+      tipoCalculo: 'peso',
+    };
+  }
+
+  return {
+    descripcion: producto.description,
+    cantidad: producto.quantity,
+    unidad: 'und',
+    precioUnitario: producto.price,
+    pesoTotal: 0,
+    tipoCalculo: 'unidad',
+  };
+}
+
 function textoEstadoDrive(estado: Presupuesto['estadoDrive']): string {
   if (estado === 'tablet') return 'Guardado en tablet';
   if (estado === 'pendiente') return 'Copia en Drive pendiente';
@@ -1111,129 +1240,53 @@ function App() {
 
   async function agregarProductoDesdeVoz(
     producto: VoiceReadyProduct,
-  ): Promise<void> {
+  ): Promise<string | undefined> {
     if (!presupuestoActual) {
       throw new Error('No hay un presupuesto activo para agregar el producto.');
     }
 
-    let datosLinea: {
-      descripcion: string;
-      cantidad: number;
-      unidad: string;
-      precioUnitario: number;
-      pesoTotal: number;
-      tipoCalculo: TipoCalculoLinea;
-      largo?: number;
-      ancho?: number;
-      espesor?: number;
-      masaNominal?: number;
-    };
-
-    if (producto.kind === 'catalog-weight') {
-      const pesoTotal = calcularPesoTotalProductoProveedor(
-        producto.quantity,
-        producto.lengthM,
-        producto.massNominalKgM,
-      );
-
-      if (!Number.isFinite(pesoTotal) || pesoTotal <= 0) {
-        throw new Error('No se pudo calcular un peso total válido para el producto de tabla.');
-      }
-
-      datosLinea = {
-        descripcion: producto.description,
-        cantidad: producto.quantity,
-        unidad: 'kg',
-        precioUnitario: producto.price,
-        pesoTotal,
-        tipoCalculo: 'peso',
-        largo: producto.lengthM,
-        masaNominal: producto.massNominalKgM,
-      };
-    } else if (producto.kind === 'tube') {
-      const pesoTotal = calcularPesoTotalTuboCalculadora({
-        forma: producto.calculatorShape,
-        cantidad: producto.quantity,
-        largoM: producto.lengthM,
-        diametroExteriorMm: producto.diameterMm,
-        ladoExteriorMm: producto.sideMm,
-        anchoExteriorMm: producto.widthMm,
-        altoExteriorMm: producto.heightMm,
-        espesorTuboMm: producto.thicknessMm,
-      });
-
-      if (!Number.isFinite(pesoTotal) || pesoTotal <= 0) {
-        throw new Error('La calculadora de metales no pudo obtener un peso válido para el tubo.');
-      }
-
-      datosLinea = {
-        descripcion: producto.description,
-        cantidad: producto.quantity,
-        unidad: 'kg',
-        precioUnitario: producto.price,
-        pesoTotal,
-        tipoCalculo: 'peso',
-        largo: producto.lengthM,
-      };
-    } else if (producto.kind === 'meter') {
-      datosLinea = {
-        descripcion: producto.description,
-        cantidad: producto.quantity,
-        unidad: 'm',
-        precioUnitario: producto.price,
-        pesoTotal: 0,
-        tipoCalculo: 'metro',
-        largo: producto.lengthM,
-      };
-    } else if (producto.kind === 'plancha') {
-      const pesoTotal = calcularPesoTotalPlanchaAcero(
-        producto.quantity,
-        producto.lengthMm,
-        producto.widthMm,
-        producto.thicknessMm,
-      );
-
-      if (!Number.isFinite(pesoTotal) || pesoTotal <= 0) {
-        throw new Error('No se pudo calcular un peso total válido para la plancha.');
-      }
-
-      datosLinea = {
-        descripcion: producto.description,
-        cantidad: producto.quantity,
-        unidad: 'kg',
-        precioUnitario: producto.price,
-        pesoTotal,
-        tipoCalculo: 'plancha',
-        largo: producto.lengthMm,
-        ancho: producto.widthMm,
-        espesor: producto.thicknessMm,
-      };
-    } else if (producto.kind === 'manual-weight') {
-      datosLinea = {
-        descripcion: producto.description,
-        cantidad: 1,
-        unidad: 'kg',
-        precioUnitario: producto.price,
-        pesoTotal: producto.weightKg,
-        tipoCalculo: 'peso',
-      };
-    } else {
-      datosLinea = {
-        descripcion: producto.description,
-        cantidad: producto.quantity,
-        unidad: 'und',
-        precioUnitario: producto.price,
-        pesoTotal: 0,
-        tipoCalculo: 'unidad',
-      };
-    }
+    const datosLinea = construirDatosLineaDesdeProductoVoz(producto);
 
     await agregarLineaPresupuesto(presupuestoActual.id, datosLinea);
+
+    const lineasActualizadas = await listarLineasPorPresupuesto(
+      presupuestoActual.id,
+    );
+    const ultimaLinea = lineasActualizadas.reduce<LineaPresupuesto | undefined>(
+      (ultima, linea) =>
+        !ultima || linea.orden > ultima.orden ? linea : ultima,
+      undefined,
+    );
+
     await recargarPresupuestoActual(presupuestoActual.id);
     await cargarPresupuestos();
 
     setMensaje('');
     setAvisoModal('Producto agregado por voz.');
+
+    return ultimaLinea?.id;
+  }
+
+  async function corregirProductoAgregadoDesdeVoz(
+    lineaId: string,
+    producto: VoiceReadyProduct,
+  ): Promise<void> {
+    if (!presupuestoActual) {
+      throw new Error('No hay un presupuesto activo para actualizar el producto.');
+    }
+
+    const datosLinea = construirDatosLineaDesdeProductoVoz(producto);
+
+    await actualizarLineaPresupuesto(
+      presupuestoActual.id,
+      lineaId,
+      datosLinea,
+    );
+    await recargarPresupuestoActual(presupuestoActual.id);
+    await cargarPresupuestos();
+
+    setMensaje('');
+    setAvisoModal('Último producto actualizado por voz.');
   }
 
   async function agregarProducto(event: FormEvent<HTMLFormElement>) {
@@ -2547,6 +2600,7 @@ function App() {
               onTranscriptionFinal={registrarTranscripcionExperimental}
               onEvaluation={guardarEvaluacionTranscripcion}
               onAddProduct={agregarProductoDesdeVoz}
+              onCorrectAddedProduct={corregirProductoAgregadoDesdeVoz}
             />
           )}
 
