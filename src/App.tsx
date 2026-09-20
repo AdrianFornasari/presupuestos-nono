@@ -129,6 +129,25 @@ interface DatosLineaDesdeVoz {
   masaNominal?: number;
 }
 
+function formatearLargoParaDescripcion(largoM: number): string {
+  return new Intl.NumberFormat('es-AR', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 4,
+    useGrouping: false,
+  }).format(largoM);
+}
+
+function agregarLargoALaDescripcion(
+  descripcion: string,
+  largoM: number,
+): string {
+  const descripcionSinLargo = descripcion
+    .replace(/\s*-\s*Largo:?\s*\d+(?:[.,]\d+)?\s*m\s*$/i, '')
+    .trim();
+
+  return `${descripcionSinLargo} - Largo: ${formatearLargoParaDescripcion(largoM)} m`;
+}
+
 function construirDatosLineaDesdeProductoVoz(
   producto: VoiceReadyProduct,
 ): DatosLineaDesdeVoz {
@@ -146,7 +165,7 @@ function construirDatosLineaDesdeProductoVoz(
     }
 
     return {
-      descripcion: producto.description,
+      descripcion: agregarLargoALaDescripcion(producto.description, producto.lengthM),
       cantidad: producto.quantity,
       unidad: 'kg',
       precioUnitario: producto.price,
@@ -176,7 +195,7 @@ function construirDatosLineaDesdeProductoVoz(
     }
 
     return {
-      descripcion: producto.description,
+      descripcion: agregarLargoALaDescripcion(producto.description, producto.lengthM),
       cantidad: producto.quantity,
       unidad: 'kg',
       precioUnitario: producto.price,
@@ -1417,8 +1436,17 @@ function App() {
           ? 'peso'
           : tipoCalculoProducto;
 
+    const descripcionLinea =
+      (metodoIngresoProducto === 'calculadora' ||
+        (metodoIngresoProducto === 'proveedor' &&
+          tipoCalculoProducto === 'peso')) &&
+      Number.isFinite(largo) &&
+      largo > 0
+        ? agregarLargoALaDescripcion(descripcion, largo)
+        : descripcion;
+
     const datosLinea = {
-      descripcion,
+      descripcion: descripcionLinea,
       cantidad,
       unidad:
         tipoCalculoLinea === 'metro'

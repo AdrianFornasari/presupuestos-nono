@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -31,6 +32,11 @@ import {
   applyReadyVoiceProductCorrection,
   readyVoiceCorrectionFieldLabel,
 } from '../corrections/readyVoiceProductCorrection';
+import {
+  isSpeechFeedbackSupported,
+  speakSpeechFeedback,
+  stopSpeechFeedback,
+} from '../accessibility/browserSpeechFeedback';
 import type {
   SpeechToTextError,
   VoiceCaptureStatus,
@@ -83,24 +89,65 @@ function esComandoEliminacionUltimaLinea(
   return tieneAccion && tieneObjetivo;
 }
 
-function textoEstado(status: VoiceCaptureStatus): string {
-  if (status === 'requesting-permission') {
-    return 'Solicitando acceso al micrófono...';
+
+
+const LOW_VISION_STORAGE_KEY = 'presupuestos-nono.voice.low-vision';
+const SPEECH_FEEDBACK_STORAGE_KEY = 'presupuestos-nono.voice.speech-feedback';
+
+function readStoredBoolean(key: string, fallback: boolean): boolean {
+  if (typeof window === 'undefined') return fallback;
+
+  try {
+    const value = window.localStorage.getItem(key);
+    if (value === null) return fallback;
+    return value === 'true';
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStoredBoolean(key: string, value: boolean): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.setItem(key, String(value));
+  } catch {
+    // El modo accesible debe seguir funcionando aunque localStorage no esté disponible.
+  }
+}
+
+function formatSpeechDecimal(value: number, digits = 1): string {
+  return value.toLocaleString('es-AR', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: digits,
+  });
+}
+
+function formatSpeechPrice(value: number): string {
+  const [integerPart, decimalPart] = value.toFixed(3).split('.');
+  return `${integerPart} coma ${decimalPart}`;
+}
+
+function describeReadyProductForSpeech(product: VoiceReadyProduct): string {
+  const price = formatSpeechPrice(product.price);
+
+  if (product.kind === 'manual-weight') {
+    return `${product.description}. Peso ${formatSpeechDecimal(product.weightKg, 3)} kilos. Precio ${price} por kilo.`;
   }
 
-  if (status === 'listening') {
-    return 'Escuchando...';
+  if (product.kind === 'unit') {
+    return `${product.description}. Cantidad ${product.quantity}. Precio ${price} por unidad.`;
   }
 
-  if (status === 'result') {
-    return 'Transcripción finalizada.';
+  if (product.kind === 'meter') {
+    return `${product.description}. Cantidad ${product.quantity}. Largo ${formatSpeechDecimal(product.lengthM, 3)} metros. Precio ${price} por metro.`;
   }
 
-  if (status === 'error') {
-    return 'No se pudo completar el reconocimiento.';
+  if (product.kind === 'plancha') {
+    return `${product.description}. Cantidad ${product.quantity}. Precio ${price} por kilo.`;
   }
 
-  return 'Listo para dictar.';
+  return `${product.description}. Cantidad ${product.quantity}. Largo ${formatSpeechDecimal(product.lengthM, 3)} metros. Precio ${price} por kilo.`;
 }
 
 function VoiceCapturePanel({
@@ -159,8 +206,19 @@ function VoiceCapturePanel({
   const [finalizingAction, setFinalizingAction] = useState<'share' | 'download' | null>(null);
   const [finalizationError, setFinalizationError] = useState('');
   const [pdfCompleted, setPdfCompleted] = useState(false);
+  const [lowVisionMode, setLowVisionMode] = useState(() =>
+    readStoredBoolean(LOW_VISION_STORAGE_KEY, true),
+  );
+  const [speechFeedbackEnabled, setSpeechFeedbackEnabled] = useState(() =>
+    readStoredBoolean(SPEECH_FEEDBACK_STORAGE_KEY, true),
+  );
+  const [showRecognitionDetails, setShowRecognitionDetails] = useState(false);
   const mountedRef = useRef(true);
   const nextProductButtonRef = useRef<HTMLButtonElement | null>(null);
+  const lastSpokenMessageRef = useRef('');
+  const speechFeedbackInitializedRef = useRef(false);
+
+  const speechFeedbackSupported = isSpeechFeedbackSupported();
 
   const supported = provider.isSupported();
   const normalizedText = normalizeVoiceText(finalText);
@@ -207,14 +265,137 @@ function VoiceCapturePanel({
     !clienteCambiosPendientes &&
     !hayProductoEnCurso;
 
+  const pendingMissingLabels = pendingProduct
+    ? pendingProduct.missingFields.map((field) =>
+        pendingVoiceMissingFieldLabel(pendingProduct, field),
+      )
+    : [];
+
+  let accessibleStatusTitle = 'Listo para dictar producto';
+  let accessibleStatusDetail = 'Pulsá el botón de micrófono cuando quieras comenzar.';
+
+  if (status === 'requesting-permission') {
+    accessibleStatusTitle = 'Preparando micrófono';
+    accessibleStatusDetail = 'Esperando permiso para usar el micrófono.';
+  } else if (status === 'listening') {
+    accessibleStatusTitle = correctionMode ? 'Escuchando corrección' : 'Escuchando';
+    accessibleStatusDetail = interimText.trim()
+      ? `Estoy oyendo: ${interimText.trim()}`
+      : 'Hablá con naturalidad. Cuando termines, pulsá Detener.';
+  } else if (error) {
+    accessibleStatusTitle = 'Error de reconocimiento';
+    accessibleStatusDetail = error.message;
+  } else if (pendingDeleteLine) {
+    accessibleStatusTitle = 'Confirmar eliminación';
+    accessibleStatusDetail = `Se eliminará ${pendingDeleteLine.description}. Confirmá o cancelá en pantalla.`;
+  } else if (showFinalization) {
+    if (finalizationError) {
+      accessibleStatusTitle = 'No se pudo finalizar el presupuesto';
+      accessibleStatusDetail = finalizationError;
+    } else if (finalizingAction) {
+      accessibleStatusTitle = 'Generando PDF';
+      accessibleStatusDetail = 'Esperá mientras se prepara el presupuesto.';
+    } else if (pdfCompleted) {
+      accessibleStatusTitle = 'PDF generado';
+      accessibleStatusDetail = 'El presupuesto quedó guardado y listo en el historial.';
+    } else {
+      accessibleStatusTitle = presupuestoListoParaFinalizar
+        ? 'Presupuesto listo para finalizar'
+        : 'Revisión del presupuesto';
+      accessibleStatusDetail = `Cliente ${clienteCargado ? clienteNombre.trim() : 'faltante'}. ${cantidadLineas} productos. Total ${totalUsdTexto} dólares.`;
+    }
+  } else if (correctionError) {
+    accessibleStatusTitle = 'La corrección no se aplicó';
+    accessibleStatusDetail = correctionError;
+  } else if (addProductError) {
+    accessibleStatusTitle = 'No se pudo agregar el producto';
+    accessibleStatusDetail = addProductError;
+  } else if (pendingProduct) {
+    accessibleStatusTitle = `Producto pendiente: ${pendingProduct.canonicalType}`;
+    accessibleStatusDetail = pendingMissingLabels.length > 0
+      ? `Falta: ${pendingMissingLabels.join(', ')}.`
+      : 'Faltan datos para completar el producto.';
+  } else if (correctionMessage && readyProduct) {
+    accessibleStatusTitle = correctionMessage;
+    accessibleStatusDetail = describeReadyProductForSpeech(readyProduct);
+  } else if (readyProduct && status === 'result') {
+    accessibleStatusTitle = `Producto listo: ${readyProduct.canonicalType}`;
+    accessibleStatusDetail = describeReadyProductForSpeech(readyProduct);
+  } else if (correctionMessage) {
+    accessibleStatusTitle = correctionMessage;
+    accessibleStatusDetail = lastAddedVoiceLine
+      ? describeReadyProductForSpeech(lastAddedVoiceLine.product)
+      : 'La operación quedó aplicada.';
+  } else if (lastAddedProduct && readyForNextProduct) {
+    accessibleStatusTitle = 'Producto agregado al presupuesto';
+    accessibleStatusDetail = lastAddedVoiceLine
+      ? `${describeReadyProductForSpeech(lastAddedVoiceLine.product)} Listo para dictar otro producto.`
+      : `${lastAddedProduct}. Listo para dictar otro producto.`;
+  } else if (readyForNextProduct) {
+    accessibleStatusTitle = 'Listo para dictar otro producto';
+    accessibleStatusDetail = 'La operación anterior ya quedó resuelta.';
+  }
+
+  const spokenFeedbackText = `${accessibleStatusTitle}. ${accessibleStatusDetail}`.trim();
+
+  const speakAccessibilityMessage = useCallback(
+    (message: string) => {
+      if (!speechFeedbackEnabled || !speechFeedbackSupported) return false;
+      return speakSpeechFeedback(message);
+    },
+    [speechFeedbackEnabled, speechFeedbackSupported],
+  );
+
   useEffect(() => {
     mountedRef.current = true;
 
     return () => {
       mountedRef.current = false;
       provider.abort();
+      stopSpeechFeedback();
     };
   }, [provider]);
+
+  useEffect(() => {
+    writeStoredBoolean(LOW_VISION_STORAGE_KEY, lowVisionMode);
+  }, [lowVisionMode]);
+
+  useEffect(() => {
+    writeStoredBoolean(SPEECH_FEEDBACK_STORAGE_KEY, speechFeedbackEnabled);
+
+    if (!speechFeedbackEnabled) {
+      stopSpeechFeedback();
+    }
+  }, [speechFeedbackEnabled]);
+
+  useEffect(() => {
+    if (
+      !speechFeedbackEnabled ||
+      !speechFeedbackSupported ||
+      status === 'listening' ||
+      status === 'requesting-permission' ||
+      !spokenFeedbackText
+    ) {
+      return;
+    }
+
+    if (!speechFeedbackInitializedRef.current) {
+      speechFeedbackInitializedRef.current = true;
+      lastSpokenMessageRef.current = spokenFeedbackText;
+      return;
+    }
+
+    if (lastSpokenMessageRef.current === spokenFeedbackText) return;
+
+    lastSpokenMessageRef.current = spokenFeedbackText;
+    speakAccessibilityMessage(spokenFeedbackText);
+  }, [
+    speakAccessibilityMessage,
+    speechFeedbackEnabled,
+    speechFeedbackSupported,
+    spokenFeedbackText,
+    status,
+  ]);
 
   useEffect(() => {
     if (!readyForNextProduct || status !== 'idle') return;
@@ -229,6 +410,8 @@ function VoiceCapturePanel({
   async function iniciarDictado(
     mode: 'product' | 'correction' | 'added-correction' | 'added-delete' = 'product',
   ) {
+    stopSpeechFeedback();
+
     const correctionBaseText = mode === 'correction'
       ? effectiveInterpretationText
       : mode === 'added-correction'
@@ -585,6 +768,35 @@ function VoiceCapturePanel({
     provider.stop();
   }
 
+  function cambiarModoBajaVision(enabled: boolean) {
+    setLowVisionMode(enabled);
+  }
+
+  function cambiarLecturaHablada(enabled: boolean) {
+    setSpeechFeedbackEnabled(enabled);
+
+    if (!enabled) {
+      stopSpeechFeedback();
+      return;
+    }
+
+    lastSpokenMessageRef.current = spokenFeedbackText;
+    speakSpeechFeedback('Lectura en voz alta activada.');
+  }
+
+  function repetirEstadoHablado() {
+    if (!speechFeedbackEnabled || !speechFeedbackSupported) return;
+    lastSpokenMessageRef.current = spokenFeedbackText;
+    speakSpeechFeedback(spokenFeedbackText);
+  }
+
+  function probarLecturaHablada() {
+    if (!speechFeedbackSupported) return;
+    setSpeechFeedbackEnabled(true);
+    lastSpokenMessageRef.current = spokenFeedbackText;
+    speakSpeechFeedback('Lectura en voz alta activada.');
+  }
+
   function limpiarTranscripcion() {
     provider.abort();
     setStatus('idle');
@@ -855,7 +1067,82 @@ function VoiceCapturePanel({
   }
 
   return (
-    <div className="form-card">
+    <div
+      className={`form-card voice-accessibility-panel${lowVisionMode ? ' voice-low-vision' : ''}`}
+    >
+      <style>{`
+        .voice-accessibility-panel .voice-accessibility-control {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          min-height: 54px;
+          font-weight: 800;
+        }
+        .voice-accessibility-panel .voice-accessibility-control input[type="checkbox"] {
+          width: 28px;
+          height: 28px;
+          flex: 0 0 auto;
+        }
+        .voice-accessibility-panel .voice-current-status {
+          border: 3px solid currentColor;
+          border-radius: 16px;
+          padding: 16px;
+          margin-bottom: 16px;
+        }
+        .voice-accessibility-panel .voice-current-status-title {
+          display: block;
+          font-size: 1.18rem;
+          line-height: 1.25;
+          font-weight: 900;
+        }
+        .voice-accessibility-panel .voice-current-status-detail {
+          margin-top: 8px;
+          line-height: 1.4;
+        }
+        .voice-low-vision {
+          font-size: 1.16rem;
+          line-height: 1.5;
+        }
+        .voice-low-vision h2 {
+          font-size: 1.75rem !important;
+          line-height: 1.15;
+        }
+        .voice-low-vision .primary-button,
+        .voice-low-vision .secondary-button,
+        .voice-low-vision .danger-button {
+          min-height: 74px !important;
+          padding: 14px 18px !important;
+          font-size: 1.12rem !important;
+          line-height: 1.25 !important;
+        }
+        .voice-low-vision .message-box {
+          border-width: 4px !important;
+          padding: 18px !important;
+          line-height: 1.45 !important;
+        }
+        .voice-low-vision .field-label {
+          font-size: 1.14rem;
+        }
+        .voice-low-vision .text-area {
+          min-height: 112px;
+          font-size: 1.12rem;
+          line-height: 1.45;
+        }
+        .voice-low-vision .empty-text {
+          font-size: 1.02rem;
+          line-height: 1.45;
+        }
+        .voice-low-vision .voice-current-status {
+          border-width: 5px;
+          padding: 20px;
+        }
+        .voice-low-vision .voice-current-status-title {
+          font-size: 1.45rem;
+        }
+        .voice-low-vision .voice-current-status-detail {
+          font-size: 1.16rem;
+        }
+      `}</style>
       <div
         style={{
           display: 'flex',
@@ -885,19 +1172,87 @@ function VoiceCapturePanel({
             fontSize: '0.85rem',
           }}
         >
-          Etapa 8 · Flujo completo del presupuesto
+          Modo voz accesible
         </span>
       </div>
 
       <p className="empty-text">
-        El flujo por voz ya comparte el presupuesto real: cliente, líneas, numeración,
-        IndexedDB, cálculos, historial y PDF. Podés dictar varios productos, completar
-        faltantes, corregir o eliminar la última línea y continuar sin salir de esta
-        pantalla. Cuando termines, usá “Revisar y finalizar presupuesto”: la app
-        comprobará cliente, productos y operaciones pendientes antes de habilitar el PDF.
-        Cada cambio se guarda en la tablet en el momento; no existe un segundo botón
-        “Guardar” ni una base separada para presupuestos por voz.
+        El modo voz comparte el mismo presupuesto, cálculos, historial y PDF. Esta vista
+        prioriza baja visión y confirmaciones habladas: podés ampliar los controles,
+        escuchar el estado actual y ocultar los detalles técnicos de reconocimiento cuando
+        no los necesites.
       </p>
+
+      <div
+        style={{
+          marginTop: '14px',
+          marginBottom: '16px',
+          border: '2px solid currentColor',
+          borderRadius: '16px',
+          padding: '14px',
+        }}
+      >
+        <strong>Accesibilidad</strong>
+        <div
+          style={{
+            display: 'grid',
+            gap: '8px',
+            marginTop: '10px',
+          }}
+        >
+          <label className="voice-accessibility-control">
+            <input
+              type="checkbox"
+              checked={lowVisionMode}
+              onChange={(event) => cambiarModoBajaVision(event.target.checked)}
+            />
+            <span>Modo baja visión: texto y controles ampliados</span>
+          </label>
+
+          <label className="voice-accessibility-control">
+            <input
+              type="checkbox"
+              checked={speechFeedbackEnabled}
+              disabled={!speechFeedbackSupported}
+              onChange={(event) => cambiarLecturaHablada(event.target.checked)}
+            />
+            <span>Lectura en voz alta de estados y confirmaciones</span>
+          </label>
+        </div>
+
+        <div
+          style={{
+            display: 'flex',
+            gap: '10px',
+            flexWrap: 'wrap',
+            marginTop: '12px',
+          }}
+        >
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={probarLecturaHablada}
+            disabled={!speechFeedbackSupported}
+          >
+            🔊 Probar lectura
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={repetirEstadoHablado}
+            disabled={!speechFeedbackSupported || !speechFeedbackEnabled}
+          >
+            🔊 Repetir estado
+          </button>
+        </div>
+
+        {!speechFeedbackSupported && (
+          <div className="empty-text" style={{ marginTop: '10px' }}>
+            Este navegador no ofrece síntesis de voz. El reconocimiento de productos sigue
+            funcionando normalmente.
+          </div>
+        )}
+      </div>
 
       {!supported && (
         <div className="message-box">
@@ -946,80 +1301,96 @@ function VoiceCapturePanel({
       </div>
 
       <div
+        className="voice-current-status"
+        role="status"
         aria-live="polite"
-        style={{
-          border: '1px solid currentColor',
-          borderRadius: '12px',
-          padding: '12px',
-          marginBottom: '14px',
-          opacity: status === 'idle' ? 0.78 : 1,
-        }}
+        aria-atomic="true"
       >
-        <strong>
+        <span className="voice-current-status-title">
           {status === 'listening' ? '🔴 ' : ''}
-          {correctionMode && status === 'listening'
-            ? 'Escuchando corrección...'
-            : textoEstado(status)}
-        </strong>
+          {accessibleStatusTitle}
+        </span>
+        <div className="voice-current-status-detail">
+          {accessibleStatusDetail}
+        </div>
       </div>
 
-      {error && (
-        <div className="message-box">
-          {error.message}
-          {error.originalCode
-            ? ` (${error.originalCode})`
-            : ''}
+      {(visibleTranscript || finalText || effectiveInterpretationText) && (
+        <div style={{ marginBottom: '14px' }}>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => setShowRecognitionDetails((current) => !current)}
+            aria-expanded={showRecognitionDetails}
+          >
+            {showRecognitionDetails
+              ? 'Ocultar detalles de reconocimiento'
+              : 'Ver detalles de reconocimiento'}
+          </button>
         </div>
       )}
 
-      <label className="field-label">
-        Texto reconocido (original)
-        <textarea
-          className="text-area"
-          rows={5}
-          readOnly
-          value={visibleTranscript}
-          placeholder="La transcripción aparecerá exactamente aquí..."
-          style={{ whiteSpace: 'pre-wrap' }}
-        />
-      </label>
+      {showRecognitionDetails && (
+        <div
+          style={{
+            border: '2px solid currentColor',
+            borderRadius: '14px',
+            padding: '14px',
+            marginBottom: '16px',
+          }}
+        >
+          <strong>Detalles de reconocimiento</strong>
 
-      {status === 'listening' && interimText && (
-        <p className="empty-text">
-          Resultado parcial: {interimText}
-        </p>
-      )}
-
-      {finalText && status === 'result' && (
-        <label className="field-label">
-          Texto normalizado
-          <textarea
-            className="text-area"
-            rows={5}
-            readOnly
-            value={normalizedText}
-            placeholder="La versión normalizada aparecerá aquí..."
-            style={{ whiteSpace: 'pre-wrap' }}
-          />
-        </label>
-      )}
-
-      {finalText &&
-        status === 'result' &&
-        effectiveInterpretationText &&
-        effectiveInterpretationText !== normalizedText && (
-          <label className="field-label">
-            Interpretación acumulada
+          <label className="field-label" style={{ marginTop: '12px' }}>
+            Texto reconocido (original)
             <textarea
               className="text-area"
               rows={5}
               readOnly
-              value={effectiveInterpretationText}
-              placeholder="El producto pendiente y sus aclaraciones aparecerán aquí..."
+              value={visibleTranscript}
+              placeholder="La transcripción aparecerá exactamente aquí..."
               style={{ whiteSpace: 'pre-wrap' }}
             />
           </label>
-        )}
+
+          {status === 'listening' && interimText && (
+            <p className="empty-text">
+              Resultado parcial: {interimText}
+            </p>
+          )}
+
+          {finalText && status === 'result' && (
+            <label className="field-label">
+              Texto normalizado
+              <textarea
+                className="text-area"
+                rows={5}
+                readOnly
+                value={normalizedText}
+                placeholder="La versión normalizada aparecerá aquí..."
+                style={{ whiteSpace: 'pre-wrap' }}
+              />
+            </label>
+          )}
+
+          {finalText &&
+            status === 'result' &&
+            effectiveInterpretationText &&
+            effectiveInterpretationText !== normalizedText && (
+              <label className="field-label">
+                Interpretación acumulada
+                <textarea
+                  className="text-area"
+                  rows={5}
+                  readOnly
+                  value={effectiveInterpretationText}
+                  placeholder="El producto pendiente y sus aclaraciones aparecerán aquí..."
+                  style={{ whiteSpace: 'pre-wrap' }}
+                />
+              </label>
+            )}
+        </div>
+      )}
 
       {pendingProduct && (
         <div className="message-box" style={{ marginTop: '12px' }}>
