@@ -417,6 +417,7 @@ function App() {
   const [lineaEnEdicion, setLineaEnEdicion] =
     useState<LineaPresupuesto | null>(null);
   const [productoFormVersion, setProductoFormVersion] = useState(0);
+  const [productoFormColapsado, setProductoFormColapsado] = useState(false);
 
   const inputBackupRef = useRef<HTMLInputElement | null>(null);
   const productoFormRef = useRef<HTMLFormElement | null>(null);
@@ -1165,6 +1166,7 @@ function App() {
 
     setMetodoIngresoProducto(metodoIngreso);
     setLineaEnEdicion(linea);
+    setProductoFormColapsado(false);
     setProductoFormVersion((version) => version + 1);
     setTipoCalculoProducto(tipoCalculo);
     setDescripcionProducto(linea.descripcion);
@@ -1701,6 +1703,7 @@ function App() {
 
   function volverMenuPrincipal() {
     setModoPresupuesto('manual');
+    setProductoFormColapsado(false);
     setPantalla('menu');
     setPresupuestoActual(null);
     setLineas([]);
@@ -2250,6 +2253,7 @@ function App() {
               className="primary-button"
               onClick={() => {
                 setModoPresupuesto('manual');
+                setProductoFormColapsado(false);
                 setPantalla('inicio');
                 setMensaje('');
                 void cargarPresupuestos();
@@ -2263,6 +2267,7 @@ function App() {
               className="secondary-button"
               onClick={() => {
                 setModoPresupuesto('voz');
+                setProductoFormColapsado(true);
                 setPantalla('inicio');
                 setMensaje('');
                 void cargarPresupuestos();
@@ -2673,8 +2678,37 @@ function App() {
             className="form-card product-form-card"
             onSubmit={agregarProducto}
           >
-            <h2>{lineaEnEdicion ? 'Editar producto' : 'Agregar producto'}</h2>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '12px',
+                flexWrap: 'wrap',
+              }}
+            >
+              <h2 style={{ margin: 0 }}>
+                {lineaEnEdicion ? 'Editar producto' : 'Agregar producto'}
+              </h2>
 
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() =>
+                  setProductoFormColapsado((colapsado) => !colapsado)
+                }
+                aria-expanded={!productoFormColapsado}
+                aria-controls="contenido-agregar-producto"
+              >
+                {productoFormColapsado ? 'Mostrar' : 'Ocultar'}
+              </button>
+            </div>
+
+            <div
+              id="contenido-agregar-producto"
+              hidden={productoFormColapsado}
+              style={{ marginTop: '16px' }}
+            >
             <label className="field-label product-full-field">
               Descripción del producto
               <textarea
@@ -3106,6 +3140,7 @@ function App() {
                   Cancelar edición
                 </button>
               )}
+            </div>
             </div>
           </form>
 

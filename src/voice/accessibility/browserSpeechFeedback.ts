@@ -34,6 +34,25 @@ function findSpanishVoice(language: string): SpeechSynthesisVoice | undefined {
   );
 }
 
+/**
+ * Prepara exclusivamente el texto que va a leer SpeechSynthesis.
+ *
+ * No modifica el texto visible, las descripciones del presupuesto, los datos
+ * estructurados ni el PDF. Las "x" usadas como separadores de medidas se
+ * pronuncian como "por".
+ *
+ * Ejemplos:
+ * - "UL 50x25" -> "UL 50 por 25"
+ * - "100 x 50 x 2" -> "100 por 50 por 2"
+ * - '1 1/2" x 3/16"' -> '1 1/2" por 3/16"'
+ */
+export function prepareSpeechFeedbackText(text: string): string {
+  return text
+    .replace(/(\d|["”])\s*[xX×]\s*(?=\d)/g, '$1 por ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function stopSpeechFeedback(): void {
   if (!isSpeechFeedbackSupported()) return;
   window.speechSynthesis.cancel();
@@ -43,7 +62,7 @@ export function speakSpeechFeedback(
   text: string,
   options: SpeechFeedbackOptions = {},
 ): boolean {
-  const cleanText = text.replace(/\s+/g, ' ').trim();
+  const cleanText = prepareSpeechFeedbackText(text);
   if (!cleanText || !isSpeechFeedbackSupported()) return false;
 
   const language = options.language ?? DEFAULT_LANGUAGE;
