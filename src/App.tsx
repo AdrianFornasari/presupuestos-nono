@@ -2632,7 +2632,7 @@ function App() {
           <div className="app-header app-header-compact">
             <p className="eyebrow">
               {modoPresupuesto === 'voz'
-                ? 'Presupuesto por voz · Experimental'
+                ? 'Presupuesto por voz'
                 : 'Presupuesto'}
             </p>
             <h1>{presupuestoActual.numeroFormateado}</h1>
@@ -3338,27 +3338,29 @@ function App() {
             )}
           </div>
 
-          <div className="form-card">
-            <h2>PDF</h2>
+          {modoPresupuesto !== 'voz' && (
+            <div className="form-card">
+              <h2>PDF</h2>
 
-            <div className="main-actions">
-              <button
-                type="button"
-                className="primary-button"
-                onClick={generarPdfCompartir}
-              >
-                Generar y compartir PDF
-              </button>
+              <div className="main-actions">
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={generarPdfCompartir}
+                >
+                  Generar y compartir PDF
+                </button>
 
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={generarPdfDescarga}
-              >
-                Generar y descargar PDF
-              </button>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={generarPdfDescarga}
+                >
+                  Generar y descargar PDF
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </section>
       </main>
     );
@@ -3386,9 +3388,6 @@ function App() {
         </div>
 
         <div className="app-header">
-          {modoPresupuesto === 'voz' && (
-            <p className="eyebrow">Experimental</p>
-          )}
           <h1>
             {modoPresupuesto === 'voz'
               ? 'Presupuesto por voz'
