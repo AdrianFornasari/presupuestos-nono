@@ -37,6 +37,7 @@ import {
   speakSpeechFeedback,
   stopSpeechFeedback,
 } from '../accessibility/browserSpeechFeedback';
+import { detectVoiceControlCommand } from '../control/voiceControlCommands';
 import type {
   SpeechToTextError,
   VoiceCaptureStatus,
@@ -201,6 +202,7 @@ function VoiceCapturePanel({
   const [correctionMode, setCorrectionMode] = useState(false);
   const [correctionMessage, setCorrectionMessage] = useState('');
   const [correctionError, setCorrectionError] = useState('');
+  const [controlMessage, setControlMessage] = useState('');
   const [readyForNextProduct, setReadyForNextProduct] = useState(false);
   const [showFinalization, setShowFinalization] = useState(false);
   const [finalizingAction, setFinalizingAction] = useState<'share' | 'download' | null>(null);
@@ -310,11 +312,27 @@ function VoiceCapturePanel({
   } else if (addProductError) {
     accessibleStatusTitle = 'No se pudo agregar el producto';
     accessibleStatusDetail = addProductError;
+  } else if (controlMessage) {
+    accessibleStatusTitle = 'Comando de recuperación';
+    accessibleStatusDetail = controlMessage;
   } else if (pendingProduct) {
     accessibleStatusTitle = `Producto pendiente: ${pendingProduct.canonicalType}`;
     accessibleStatusDetail = pendingMissingLabels.length > 0
       ? `Falta: ${pendingMissingLabels.join(', ')}.`
       : 'Faltan datos para completar el producto.';
+  } else if (
+    status === 'result' &&
+    productIdentification.status === 'ambiguous'
+  ) {
+    accessibleStatusTitle = 'Producto ambiguo';
+    accessibleStatusDetail = `Posibles familias: ${productIdentification.canonicalTypes.join(', ')}. Podés aclarar el producto o decir “empezar de nuevo”.`;
+  } else if (
+    status === 'result' &&
+    productIdentification.status === 'not-found' &&
+    Boolean(effectiveInterpretationText.trim())
+  ) {
+    accessibleStatusTitle = 'No se reconoció el producto';
+    accessibleStatusDetail = 'Podés intentarlo otra vez, decir “empezar de nuevo” o “descartar este producto”.';
   } else if (correctionMessage && readyProduct) {
     accessibleStatusTitle = correctionMessage;
     accessibleStatusDetail = describeReadyProductForSpeech(readyProduct);
@@ -410,6 +428,60 @@ function VoiceCapturePanel({
   async function iniciarDictado(
     mode: 'product' | 'correction' | 'added-correction' | 'added-delete' = 'product',
   ) {
+    const dictationSnapshot = {
+      finalText,
+      interpretationText,
+      pendingProduct,
+      clarificationApplied,
+      completedPendingProduct,
+      correctionMessage,
+      correctionError,
+      controlMessage,
+      readyForNextProduct,
+      lastAddedProduct,
+      lastAddedVoiceLine,
+      pendingDeleteLine,
+      showFinalization,
+      pdfCompleted,
+      finalizationError,
+    };
+    const repeatMessageBeforeListening = spokenFeedbackText;
+
+    const restoreDictationSnapshot = () => {
+      setFinalText(dictationSnapshot.finalText);
+      setInterimText('');
+      setInterpretationText(dictationSnapshot.interpretationText);
+      setPendingProduct(dictationSnapshot.pendingProduct);
+      setClarificationApplied(dictationSnapshot.clarificationApplied);
+      setCompletedPendingProduct(dictationSnapshot.completedPendingProduct);
+      setCorrectionMessage(dictationSnapshot.correctionMessage);
+      setCorrectionError(dictationSnapshot.correctionError);
+      setControlMessage(dictationSnapshot.controlMessage);
+      setReadyForNextProduct(dictationSnapshot.readyForNextProduct);
+      setLastAddedProduct(dictationSnapshot.lastAddedProduct);
+      setLastAddedVoiceLine(dictationSnapshot.lastAddedVoiceLine);
+      setPendingDeleteLine(dictationSnapshot.pendingDeleteLine);
+      setShowFinalization(dictationSnapshot.showFinalization);
+      setPdfCompleted(dictationSnapshot.pdfCompleted);
+      setFinalizationError(dictationSnapshot.finalizationError);
+      setCorrectionMode(false);
+      setError(null);
+      setStatus(
+        dictationSnapshot.interpretationText || dictationSnapshot.finalText
+          ? 'result'
+          : 'idle',
+      );
+    };
+
+    const registerControlTranscription = (text: string) => {
+      if (!onTranscriptionFinal) return;
+      void onTranscriptionFinal(text, presupuestoId).then((id) => {
+        if (mountedRef.current && typeof id === 'string' && id) {
+          setLogId(id);
+        }
+      });
+    };
+
     stopSpeechFeedback();
 
     const correctionBaseText = mode === 'correction'
@@ -435,6 +507,7 @@ function VoiceCapturePanel({
     setCorrectionMode(mode === 'correction' || mode === 'added-correction');
     setCorrectionMessage('');
     setCorrectionError('');
+    setControlMessage('');
     setReadyForNextProduct(false);
     if (mode !== 'added-delete') {
       setPendingDeleteLine(null);
@@ -490,6 +563,68 @@ function VoiceCapturePanel({
           }
 
           const normalizado = normalizeVoiceText(limpio);
+          const controlCommand = detectVoiceControlCommand(normalizado, limpio);
+
+          if (
+            controlCommand &&
+            !(mode === 'added-delete' && controlCommand === 'discard-product')
+          ) {
+            registerControlTranscription(limpio);
+
+            if (controlCommand === 'repeat-status') {
+              restoreDictationSnapshot();
+              if (
+                speechFeedbackEnabled &&
+                speechFeedbackSupported &&
+                repeatMessageBeforeListening
+              ) {
+                lastSpokenMessageRef.current = repeatMessageBeforeListening;
+                speakSpeechFeedback(repeatMessageBeforeListening);
+              } else {
+                setControlMessage(
+                  speechFeedbackSupported
+                    ? 'La lectura hablada está desactivada. Podés activarla desde Accesibilidad.'
+                    : 'Este navegador no ofrece lectura hablada.',
+                );
+              }
+              return;
+            }
+
+            if (controlCommand === 'cancel-turn') {
+              restoreDictationSnapshot();
+              setControlMessage(
+                'Operación de voz cancelada. Se mantuvieron los datos anteriores.',
+              );
+              return;
+            }
+
+            setFinalText('');
+            setInterimText('');
+            setError(null);
+            setInterpretationText('');
+            setPendingProduct(null);
+            setClarificationApplied(false);
+            setCompletedPendingProduct(null);
+            setCorrectionMode(false);
+            setCorrectionMessage('');
+            setCorrectionError('');
+            setPendingDeleteLine(null);
+            setShowFinalization(false);
+            setPdfCompleted(false);
+            setFinalizationError('');
+            setLastAddedProduct('');
+            setLastAddedVoiceLine(null);
+            setReadyForNextProduct(true);
+            setControlMessage(
+              controlCommand === 'restart-product'
+                ? 'Se descartó el producto en curso. Listo para empezar un producto nuevo.'
+                : dictationSnapshot.interpretationText || dictationSnapshot.pendingProduct
+                  ? 'Producto actual descartado. Listo para dictar otro producto.'
+                  : 'No había un producto sin agregar para descartar. Listo para dictar un producto.',
+            );
+            setStatus('idle');
+            return;
+          }
 
           if (mode === 'added-delete') {
             if (onTranscriptionFinal) {
@@ -819,6 +954,7 @@ function VoiceCapturePanel({
     setCorrectionMode(false);
     setCorrectionMessage('');
     setCorrectionError('');
+    setControlMessage('');
     setReadyForNextProduct(false);
     setShowFinalization(false);
     setFinalizingAction(null);
@@ -839,7 +975,8 @@ function VoiceCapturePanel({
     setCorrectionMode(false);
     setCorrectionMessage('');
     setCorrectionError('');
-    setReadyForNextProduct(false);
+    setControlMessage('Producto actual descartado.');
+    setReadyForNextProduct(true);
   }
 
   async function iniciarCorreccionProducto() {
@@ -1179,8 +1316,8 @@ function VoiceCapturePanel({
       <p className="empty-text">
         El modo voz comparte el mismo presupuesto, cálculos, historial y PDF. Esta vista
         prioriza baja visión y confirmaciones habladas: podés ampliar los controles,
-        escuchar el estado actual y ocultar los detalles técnicos de reconocimiento cuando
-        no los necesites.
+        escuchar el estado actual, recuperar errores con comandos de voz y ocultar los
+        detalles técnicos de reconocimiento cuando no los necesites.
       </p>
 
       <div
@@ -1253,6 +1390,26 @@ function VoiceCapturePanel({
           </div>
         )}
       </div>
+
+      <details
+        style={{
+          marginBottom: '14px',
+          border: '1px solid currentColor',
+          borderRadius: '12px',
+          padding: '10px 12px',
+        }}
+      >
+        <summary style={{ cursor: 'pointer', fontWeight: 700 }}>
+          Comandos de recuperación por voz
+        </summary>
+        <div className="empty-text" style={{ marginTop: '10px' }}>
+          Mientras el micrófono está escuchando también podés decir: “cancelar” para
+          anular sólo ese turno, “empezar de nuevo” para descartar el producto en curso,
+          “descartar este producto” para abandonarlo o “repetir estado” / “no entendí”
+          para volver a escuchar la última confirmación. Ninguno de estos comandos borra
+          líneas ya guardadas del presupuesto.
+        </div>
+      </details>
 
       {!supported && (
         <div className="message-box">
@@ -1571,6 +1728,12 @@ function VoiceCapturePanel({
         </div>
       )}
 
+      {controlMessage && (
+        <div className="message-box" style={{ marginTop: '12px' }}>
+          ✓ {controlMessage}
+        </div>
+      )}
+
       {correctionError && (
         <div className="message-box" style={{ marginTop: '12px' }}>
           {correctionError}
@@ -1838,12 +2001,16 @@ function VoiceCapturePanel({
               <div className="empty-text" style={{ marginTop: '6px' }}>
                 Posibles familias: {productIdentification.canonicalTypes.join(' · ')}.
               </div>
+              <div className="empty-text" style={{ marginTop: '6px' }}>
+                Podés aclarar el producto o decir “empezar de nuevo”.
+              </div>
             </div>
           )}
 
           {productIdentification.status === 'not-found' && (
             <div className="empty-text" style={{ marginTop: '8px' }}>
-              No se identificó una familia de producto conocida.
+              No se identificó una familia de producto conocida. Podés volver a dictarlo,
+              decir “empezar de nuevo” o “descartar este producto”.
             </div>
           )}
         </div>
