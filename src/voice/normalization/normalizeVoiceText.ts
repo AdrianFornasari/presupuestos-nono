@@ -553,32 +553,50 @@ function normalizarEspesor(texto: string): string {
 }
 
 
-function normalizarNueveDieciseisPulgada(texto: string): string {
-  // En algunos Android/Chrome, “nueve dieciseisavos de pulgada” llega como
-  // “916 pulgadas” o “9 16 pulgadas”. En el catálogo real 9/16" es una
-  // medida válida de barras, por lo que canonizamos únicamente este caso
-  // inequívoco dentro de contexto de pulgadas.
+function normalizarDieciseisavosPulgada(texto: string): string {
+  // Android/Chrome puede compactar fracciones de dieciseisavos y devolver,
+  // por ejemplo, “316 pulgadas” / `316"` para 3/16" o “916 pulgadas” / `916"`
+  // para 9/16". Estas correcciones se aplican únicamente cuando hay contexto
+  // explícito de pulgadas para no alterar cantidades, precios u otras medidas.
   let resultado = texto.replace(
-    /\b916\s*(?:de\s+)?pulgadas?\b/giu,
+    /\b316\s*(?:de\s+)?(?:pulgadas?|")/giu,
+    '3/16 pulgadas',
+  );
+
+  resultado = resultado.replace(
+    /\b916\s*(?:de\s+)?(?:pulgadas?|")/giu,
     '9/16 pulgadas',
   );
 
   resultado = resultado.replace(
-    /\b9\s*(?:\/|sobre|\s+)\s*16\s*(?:de\s+)?pulgadas?\b/giu,
+    /\b3\s*(?:\/|sobre|\s+)\s*16\s*(?:de\s+)?(?:pulgadas?|")/giu,
+    '3/16 pulgadas',
+  );
+
+  resultado = resultado.replace(
+    /\b9\s*(?:\/|sobre|\s+)\s*16\s*(?:de\s+)?(?:pulgadas?|")/giu,
     '9/16 pulgadas',
   );
 
   resultado = resultado.replace(
-    /\b9\s+dieciseisavos?\s*(?:de\s+)?pulgadas?\b/giu,
+    /\b(?:tres|3)\s+dieciseisavos?\s*(?:de\s+)?(?:pulgadas?|")/giu,
+    '3/16 pulgadas',
+  );
+
+  resultado = resultado.replace(
+    /\b(?:nueve|9)\s+dieciseisavos?\s*(?:de\s+)?(?:pulgadas?|")/giu,
     '9/16 pulgadas',
   );
 
-  // Variante observada en dictado móvil: "nueve barra dieciseis 16 de pulgada".
-  // Se acepta también con 9/16, con o sin tilde y con el segundo "16" omitido.
-  // La regla queda restringida al contexto explícito de pulgadas para no alterar
-  // otros números o precios.
+  // Variantes observadas en dictado móvil, por ejemplo:
+  // “nueve barra dieciseis 16 de pulgada” y “tres barra dieciseis”.
   resultado = resultado.replace(
-    /\b(?:nueve|9)\s+(?:barra|sobre|\/)\s+(?:dieciseis|dieciséis|16)(?:\s+16)?\s*(?:de\s+)?pulgadas?\b/giu,
+    /\b(?:tres|3)\s+(?:barra|sobre|\/)\s+(?:dieciseis|dieciséis|16)(?:\s+16)?\s*(?:de\s+)?(?:pulgadas?|")/giu,
+    '3/16 pulgadas',
+  );
+
+  resultado = resultado.replace(
+    /\b(?:nueve|9)\s+(?:barra|sobre|\/)\s+(?:dieciseis|dieciséis|16)(?:\s+16)?\s*(?:de\s+)?(?:pulgadas?|")/giu,
     '9/16 pulgadas',
   );
 
@@ -651,7 +669,7 @@ export function normalizeVoiceText(text: string): string {
   resultado = normalizarPrefijoPrecioPegado(resultado);
   resultado = normalizarPreciosHablados(resultado);
   resultado = normalizarNumerosEnPalabras(resultado);
-  resultado = normalizarNueveDieciseisPulgada(resultado);
+  resultado = normalizarDieciseisavosPulgada(resultado);
   resultado = normalizarPulgadasYMedias(resultado);
   resultado = normalizarPrecioUnos(resultado);
   resultado = normalizarSeparadoresDecimalesGenerales(resultado);
