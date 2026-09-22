@@ -23,9 +23,19 @@ type ModoCalculoPerfil = 'tabla' | 'manual';
 type TipoChapaTecho = 'acanalada' | 'trapezoidal';
 type MaterialChapaTecho = 'galvanizada' | 'negra';
 
+export interface MedidasTuboCalculadoraResultado {
+  forma: FormaTuboCalculadora;
+  diametroExteriorMm?: number;
+  ladoExteriorMm?: number;
+  anchoExteriorMm?: number;
+  altoExteriorMm?: number;
+  espesorTuboMm: number;
+}
+
 export interface ResultadoCalculoMetal {
   pesoCalculado: number;
   largoMm: number;
+  medidasTubo?: MedidasTuboCalculadoraResultado;
 }
 
 interface MetalWeightCalculatorModalProps {
@@ -884,6 +894,65 @@ function MetalWeightCalculatorModal({
     }
   }
 
+  function obtenerMedidasTuboResultado(): MedidasTuboCalculadoraResultado | undefined {
+    if (!esTubo(forma)) {
+      return undefined;
+    }
+
+    const espesorTuboMm = parsearDecimal(valores.espesorTuboMm);
+
+    if (!Number.isFinite(espesorTuboMm) || espesorTuboMm <= 0) {
+      return undefined;
+    }
+
+    if (forma === 'tubo-redondo') {
+      const diametroExteriorMm = parsearDecimal(valores.diametroExteriorMm);
+
+      if (!Number.isFinite(diametroExteriorMm) || diametroExteriorMm <= 0) {
+        return undefined;
+      }
+
+      return {
+        forma,
+        diametroExteriorMm,
+        espesorTuboMm,
+      };
+    }
+
+    if (forma === 'tubo-cuadrado') {
+      const ladoExteriorMm = parsearDecimal(valores.ladoExteriorMm);
+
+      if (!Number.isFinite(ladoExteriorMm) || ladoExteriorMm <= 0) {
+        return undefined;
+      }
+
+      return {
+        forma,
+        ladoExteriorMm,
+        espesorTuboMm,
+      };
+    }
+
+    const anchoExteriorMm = parsearDecimal(valores.anchoExteriorMm);
+    const altoExteriorMm = parsearDecimal(valores.altoExteriorMm);
+
+    if (
+      !Number.isFinite(anchoExteriorMm) ||
+      anchoExteriorMm <= 0 ||
+      !Number.isFinite(altoExteriorMm) ||
+      altoExteriorMm <= 0
+    ) {
+      return undefined;
+    }
+
+    return {
+      forma,
+      anchoExteriorMm,
+      altoExteriorMm,
+      espesorTuboMm,
+    };
+  }
+
   function aceptar() {
     if (!Number.isFinite(valorTotal) || valorTotal <= 0) {
       return;
@@ -894,6 +963,7 @@ function MetalWeightCalculatorModal({
     onAceptar({
       pesoCalculado: valorTotal,
       largoMm: Number.isFinite(largoMm) ? largoMm : 0,
+      medidasTubo: obtenerMedidasTuboResultado(),
     });
   }
 

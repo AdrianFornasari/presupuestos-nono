@@ -148,6 +148,53 @@ function agregarLargoALaDescripcion(
   return `${descripcionSinLargo} - Largo: ${formatearLargoParaDescripcion(largoM)} m`;
 }
 
+function formatearMedidaMmParaDescripcion(valorMm: number): string {
+  return new Intl.NumberFormat('es-AR', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 4,
+    useGrouping: false,
+  }).format(valorMm);
+}
+
+function construirDescripcionTuboDesdeCalculadora(
+  descripcion: string,
+  medidas: NonNullable<ResultadoCalculoMetal['medidasTubo']>,
+): string {
+  const descripcionSinLargo = descripcion
+    .replace(/\s*-\s*Largo:?\s*\d+(?:[.,]\d+)?\s*m\s*$/i, '')
+    .trim();
+  const descripcionBase = descripcionSinLargo
+    .replace(
+      /\s+(?:Ø\s*)?\d+(?:[.,]\d+)?(?:\s*x\s*\d+(?:[.,]\d+)?){1,2}\s*mm\s*$/i,
+      '',
+    )
+    .trim();
+
+  const tipoPorForma: Record<typeof medidas.forma, string> = {
+    'tubo-redondo': 'Tubo redondo',
+    'tubo-cuadrado': 'Tubo cuadrado',
+    'tubo-rectangular': 'Tubo rectangular',
+  };
+  const base = descripcionBase || tipoPorForma[medidas.forma];
+  const espesor = formatearMedidaMmParaDescripcion(medidas.espesorTuboMm);
+
+  if (medidas.forma === 'tubo-redondo') {
+    const diametro = formatearMedidaMmParaDescripcion(
+      medidas.diametroExteriorMm ?? 0,
+    );
+    return `${base} Ø ${diametro} x ${espesor} mm`;
+  }
+
+  if (medidas.forma === 'tubo-cuadrado') {
+    const lado = formatearMedidaMmParaDescripcion(medidas.ladoExteriorMm ?? 0);
+    return `${base} ${lado} x ${lado} x ${espesor} mm`;
+  }
+
+  const ancho = formatearMedidaMmParaDescripcion(medidas.anchoExteriorMm ?? 0);
+  const alto = formatearMedidaMmParaDescripcion(medidas.altoExteriorMm ?? 0);
+  return `${base} ${ancho} x ${alto} x ${espesor} mm`;
+}
+
 function construirDatosLineaDesdeProductoVoz(
   producto: VoiceReadyProduct,
 ): DatosLineaDesdeVoz {
@@ -177,15 +224,18 @@ function construirDatosLineaDesdeProductoVoz(
   }
 
   if (producto.kind === 'tube') {
-    const pesoTotal = calcularPesoTotalTuboCalculadora({
+    const medidasTubo = {
       forma: producto.calculatorShape,
-      cantidad: producto.quantity,
-      largoM: producto.lengthM,
       diametroExteriorMm: producto.diameterMm,
       ladoExteriorMm: producto.sideMm,
       anchoExteriorMm: producto.widthMm,
       altoExteriorMm: producto.heightMm,
       espesorTuboMm: producto.thicknessMm,
+    };
+    const pesoTotal = calcularPesoTotalTuboCalculadora({
+      ...medidasTubo,
+      cantidad: producto.quantity,
+      largoM: producto.lengthM,
     });
 
     if (!Number.isFinite(pesoTotal) || pesoTotal <= 0) {
@@ -194,8 +244,13 @@ function construirDatosLineaDesdeProductoVoz(
       );
     }
 
+    const descripcionTubo = construirDescripcionTuboDesdeCalculadora(
+      producto.description,
+      medidasTubo,
+    );
+
     return {
-      descripcion: agregarLargoALaDescripcion(producto.description, producto.lengthM),
+      descripcion: agregarLargoALaDescripcion(descripcionTubo, producto.lengthM),
       cantidad: producto.quantity,
       unidad: 'kg',
       precioUnitario: producto.price,
@@ -826,7 +881,7 @@ function App() {
   }
 
   function aceptarPesoCalculado(resultado: ResultadoCalculoMetal) {
-    const { pesoCalculado, largoMm } = resultado;
+    const { pesoCalculado, largoMm, medidasTubo } = resultado;
 
     if (!Number.isFinite(pesoCalculado) || pesoCalculado <= 0) {
       setMensaje('La calculadora no devolvió un peso válido.');
@@ -836,6 +891,12 @@ function App() {
     setMetodoIngresoProducto('calculadora');
     setTipoCalculoProducto('peso');
     setPesoTotalProducto(formatearDecimal4SinMiles(pesoCalculado));
+
+    if (medidasTubo) {
+      setDescripcionProducto((descripcionActual) =>
+        construirDescripcionTuboDesdeCalculadora(descripcionActual, medidasTubo),
+      );
+    }
 
     if (Number.isFinite(largoMm) && largoMm > 0) {
       setLargoProducto(formatearDecimal2SinMiles(largoMm / 1000));
