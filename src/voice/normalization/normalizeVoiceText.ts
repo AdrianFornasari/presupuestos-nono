@@ -552,6 +552,39 @@ function normalizarEspesor(texto: string): string {
   return resultado;
 }
 
+
+function normalizarNueveDieciseisPulgada(texto: string): string {
+  // En algunos Android/Chrome, “nueve dieciseisavos de pulgada” llega como
+  // “916 pulgadas” o “9 16 pulgadas”. En el catálogo real 9/16" es una
+  // medida válida de barras, por lo que canonizamos únicamente este caso
+  // inequívoco dentro de contexto de pulgadas.
+  let resultado = texto.replace(
+    /\b916\s*(?:de\s+)?pulgadas?\b/giu,
+    '9/16 pulgadas',
+  );
+
+  resultado = resultado.replace(
+    /\b9\s*(?:\/|sobre|\s+)\s*16\s*(?:de\s+)?pulgadas?\b/giu,
+    '9/16 pulgadas',
+  );
+
+  resultado = resultado.replace(
+    /\b9\s+dieciseisavos?\s*(?:de\s+)?pulgadas?\b/giu,
+    '9/16 pulgadas',
+  );
+
+  // Variante observada en dictado móvil: "nueve barra dieciseis 16 de pulgada".
+  // Se acepta también con 9/16, con o sin tilde y con el segundo "16" omitido.
+  // La regla queda restringida al contexto explícito de pulgadas para no alterar
+  // otros números o precios.
+  resultado = resultado.replace(
+    /\b(?:nueve|9)\s+(?:barra|sobre|\/)\s+(?:dieciseis|dieciséis|16)(?:\s+16)?\s*(?:de\s+)?pulgadas?\b/giu,
+    '9/16 pulgadas',
+  );
+
+  return resultado;
+}
+
 function normalizarPulgadasYMedias(texto: string): string {
   // SpeechRecognition suele devolver expresiones naturales como
   // "1 pulgada y media". Para los parsers de Ángulo y Planchuela se
@@ -618,6 +651,7 @@ export function normalizeVoiceText(text: string): string {
   resultado = normalizarPrefijoPrecioPegado(resultado);
   resultado = normalizarPreciosHablados(resultado);
   resultado = normalizarNumerosEnPalabras(resultado);
+  resultado = normalizarNueveDieciseisPulgada(resultado);
   resultado = normalizarPulgadasYMedias(resultado);
   resultado = normalizarPrecioUnos(resultado);
   resultado = normalizarSeparadoresDecimalesGenerales(resultado);
