@@ -246,7 +246,7 @@ function esPerfil(forma: FormaMetal): boolean {
   );
 }
 
-function esTubo(forma: FormaMetal): boolean {
+function esTubo(forma: FormaMetal): forma is FormaTuboCalculadora {
   return (
     forma === 'tubo-redondo' ||
     forma === 'tubo-cuadrado' ||
