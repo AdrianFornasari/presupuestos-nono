@@ -334,6 +334,16 @@ function formatearFechaLista(fechaISO: string): string {
   return `${dia}/${mes}/${anio}`;
 }
 
+function normalizarBusquedaPresupuesto(valor: string): string {
+  return valor
+    .trim()
+    .toLocaleLowerCase('es-AR')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[.-]/g, '/')
+    .replace(/\s+/g, ' ');
+}
+
 function obtenerPesoTotalLinea(linea: LineaPresupuesto): number {
   return linea.pesoTotal ?? linea.acumulado ?? 0;
 }
@@ -424,6 +434,9 @@ function App() {
     [],
   );
   const [presupuestos, setPresupuestos] = useState<Presupuesto[]>([]);
+  const [busquedaPresupuestoAbierta, setBusquedaPresupuestoAbierta] =
+    useState(false);
+  const [consultaPresupuesto, setConsultaPresupuesto] = useState('');
   const [presupuestoActual, setPresupuestoActual] =
     useState<Presupuesto | null>(null);
   const [lineas, setLineas] = useState<LineaPresupuesto[]>([]);
@@ -434,6 +447,36 @@ function App() {
 
   const [driveConectado, setDriveConectado] = useState(false);
   const [driveTrabajando, setDriveTrabajando] = useState(false);
+
+  const presupuestosFiltrados = useMemo(() => {
+    const consulta = normalizarBusquedaPresupuesto(consultaPresupuesto);
+
+    if (!consulta) {
+      return [];
+    }
+
+    return presupuestos.filter((presupuesto) => {
+      const numero = normalizarBusquedaPresupuesto(String(presupuesto.numero));
+      const numeroFormateado = normalizarBusquedaPresupuesto(
+        presupuesto.numeroFormateado,
+      );
+      const cliente = normalizarBusquedaPresupuesto(
+        presupuesto.clienteNombre || '',
+      );
+      const fechaVisible = normalizarBusquedaPresupuesto(
+        formatearFechaLista(presupuesto.fechaEmision),
+      );
+      const fechaIso = normalizarBusquedaPresupuesto(presupuesto.fechaEmision);
+
+      return (
+        numero.includes(consulta) ||
+        numeroFormateado.includes(consulta) ||
+        cliente.includes(consulta) ||
+        fechaVisible.includes(consulta) ||
+        fechaIso.includes(consulta)
+      );
+    });
+  }, [consultaPresupuesto, presupuestos]);
 
   const [tipoProductoSeleccionado, setTipoProductoSeleccionado] = useState('');
   const [productoProveedorId, setProductoProveedorId] = useState('');
@@ -3414,8 +3457,18 @@ function App() {
               : 'Nuevo presupuesto'}
           </button>
 
-          <button type="button" className="secondary-button">
-            Buscar presupuesto
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => {
+              setBusquedaPresupuestoAbierta((abierta) => !abierta);
+              setConsultaPresupuesto('');
+              setMensaje('');
+            }}
+          >
+            {busquedaPresupuestoAbierta
+              ? 'Cerrar búsqueda'
+              : 'Buscar presupuesto'}
           </button>
 
           <button
@@ -3430,10 +3483,69 @@ function App() {
           </button>
         </div>
 
-        <div className="list-card">
-          <h2>Últimos presupuestos</h2>
+        {busquedaPresupuestoAbierta && (
+          <div className="form-card">
+            <h2>Buscar presupuesto</h2>
 
-          {presupuestos.length === 0 ? (
+            <label className="field-label">
+              Número, cliente o fecha
+              <input
+                type="search"
+                className="text-input"
+                value={consultaPresupuesto}
+                onChange={(event) => setConsultaPresupuesto(event.target.value)}
+                placeholder="Ej.: 472, Acindar o 22/09/2026"
+                autoComplete="off"
+                autoFocus
+              />
+            </label>
+
+            <p className="empty-text">
+              Podés escribir el número completo o parcial, parte del nombre del
+              cliente o una fecha. Para la fecha se aceptan /, - o . como
+              separadores.
+            </p>
+          </div>
+        )}
+
+        <div className="list-card">
+          <h2>
+            {busquedaPresupuestoAbierta
+              ? 'Resultados de búsqueda'
+              : 'Últimos presupuestos'}
+          </h2>
+
+          {busquedaPresupuestoAbierta ? (
+            !consultaPresupuesto.trim() ? (
+              <p className="empty-text">
+                Escribí un número, cliente o fecha para buscar.
+              </p>
+            ) : presupuestosFiltrados.length === 0 ? (
+              <p className="empty-text">
+                No se encontraron presupuestos que coincidan con la búsqueda.
+              </p>
+            ) : (
+              <div className="budget-list">
+                {presupuestosFiltrados.map((presupuesto) => (
+                  <button
+                    key={presupuesto.id}
+                    type="button"
+                    className="budget-item"
+                    onClick={() => abrirPresupuesto(presupuesto.id)}
+                  >
+                    <span className="budget-line">
+                      <strong>{presupuesto.numeroFormateado}</strong>
+                      <span>-</span>
+                      <span>{formatearFechaLista(presupuesto.fechaEmision)}</span>
+                      <span>-</span>
+                      <span>{presupuesto.clienteNombre || 'Sin cliente'}</span>
+                      <strong>USD {formatearImporteUSD(presupuesto.total)}</strong>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )
+          ) : presupuestos.length === 0 ? (
             <p className="empty-text">Todavía no hay presupuestos cargados.</p>
           ) : (
             <div className="budget-list">
