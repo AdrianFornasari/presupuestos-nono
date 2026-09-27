@@ -19,15 +19,15 @@ const CENTRO_MARGENES = TABLA_X + TABLA_ANCHO / 2;
 
 const ALTO_CABECERA_TABLA = 10;
 const ALTO_FILA_MINIMA = 12;
-const ALTO_FILA_TOTAL = 13;
+const ALTO_FILA_TOTAL = 22;
 
 const CAJA_LEGAL_X = 14;
 const CAJA_LEGAL_ANCHO = 182;
-const CAJA_LEGAL_ALTO = 50;
-const MARGEN_INFERIOR_CAJA_LEGAL = 12;
+const CAJA_LEGAL_ALTO = 42;
 
 const Y_INICIO_TABLA = 92;
-const MARGEN_INFERIOR_DETALLE = 18;
+const MARGEN_INFERIOR_DETALLE = 12;
+const SEPARACION_TOTAL_PIE = 3;
 
 interface ColumnasTabla {
   productoFin: number;
@@ -72,7 +72,14 @@ function formatearFechaPdf(fechaISO: string): string {
   return `${dia}-${mes}-${anio}`;
 }
 
-function formatearPrecioUnitario3(valor: number): string {
+function formatearPrecioUnitario4(valor: number): string {
+  return new Intl.NumberFormat('es-AR', {
+    minimumFractionDigits: 4,
+    maximumFractionDigits: 4,
+  }).format(valor);
+}
+
+function formatearPeso3(valor: number): string {
   return new Intl.NumberFormat('es-AR', {
     minimumFractionDigits: 3,
     maximumFractionDigits: 3,
@@ -105,7 +112,7 @@ function formatearCantidadCotizada(linea: LineaPresupuesto): string {
     return `${formatearImporteUSD(metrosTotales)} m`;
   }
 
-  return `${formatearImporteUSD(obtenerPesoTotalLinea(linea))} kg`;
+  return `${formatearPeso3(obtenerPesoTotalLinea(linea))} kg`;
 }
 
 function obtenerDescripcionPdf(linea: LineaPresupuesto): string {
@@ -120,11 +127,6 @@ function obtenerDescripcionPdf(linea: LineaPresupuesto): string {
   return linea.descripcion;
 }
 
-function obtenerCajaLegalY(doc: jsPDF): number {
-  const altoPagina = doc.internal.pageSize.getHeight();
-
-  return altoPagina - MARGEN_INFERIOR_CAJA_LEGAL - CAJA_LEGAL_ALTO;
-}
 
 function obtenerColumnasTabla(): ColumnasTabla {
   const anchoUnidad = 18;
@@ -299,7 +301,7 @@ function dibujarFilaDetalle(
   );
 
   doc.text(
-    formatearPrecioUnitario3(linea.precioUnitario),
+    formatearPrecioUnitario4(linea.precioUnitario),
     precioFin - 2,
     yTextoSimple,
     { align: 'right' },
@@ -338,11 +340,15 @@ function dibujarFilaTotal(
     { align: 'right' },
   );
 
+  setFontSizeTabla(doc, 10.5);
+  doc.text('No incluyen IVA', TABLA_DERECHA - 4, y + 16, {
+    align: 'right',
+  });
+
   doc.setLineWidth(0.2);
 }
 
-function agregarPieLegal(doc: jsPDF): void {
-  const cajaY = obtenerCajaLegalY(doc);
+function agregarPieLegal(doc: jsPDF, cajaY: number): void {
   const anchoTexto = CAJA_LEGAL_ANCHO - 8;
 
   doc.setDrawColor(0, 0, 0);
@@ -366,7 +372,6 @@ function agregarPieLegal(doc: jsPDF): void {
     '- PRECIOS COTIZADOS EN DÓLARES, SE VALORIZAN SEGÚN TIPO DE CAMBIO VENDEDOR DE BNA AL CIERRE DEL DÍA ANTERIOR DEL MOMENTO DE LA ENTREGA/FACTURACIÓN.',
     '- ESTOS PRECIOS NO INCLUYEN EL ENVIO. CONSULTAR.',
     '- VALIDEZ DE OFERTA: 24 HS',
-    '- LOS PRECIOS EXPRESADOS NO INCLUYEN IMPUESTOS.',
   ];
 
   let y = cajaY + 7;
@@ -422,7 +427,8 @@ export async function generarYGuardarPdfPresupuesto(
 
   const altoPagina = doc.internal.pageSize.getHeight();
   const limiteDetallePagina = altoPagina - MARGEN_INFERIOR_DETALLE;
-  const cajaLegalY = obtenerCajaLegalY(doc);
+  const espacioTotalYPie =
+    ALTO_FILA_TOTAL + SEPARACION_TOTAL_PIE + CAJA_LEGAL_ALTO;
 
   const totalUsd = lineas.reduce(
     (acumulado, linea) => acumulado + linea.subtotal,
@@ -439,7 +445,8 @@ export async function generarYGuardarPdfPresupuesto(
     const esUltimaLinea = indice === lineas.length - 1;
 
     const necesitaEspacioParaTotalYPie =
-      esUltimaLinea && y + altoFila + ALTO_FILA_TOTAL + 5 > cajaLegalY;
+      esUltimaLinea &&
+      y + altoFila + espacioTotalYPie > limiteDetallePagina;
 
     const noEntraEnPagina = y + altoFila > limiteDetallePagina;
 
@@ -469,13 +476,13 @@ export async function generarYGuardarPdfPresupuesto(
     y += 14;
   }
 
-  if (y + ALTO_FILA_TOTAL + 5 > cajaLegalY) {
+  if (y + espacioTotalYPie > limiteDetallePagina) {
     doc.addPage();
     y = iniciarPaginaDeDetalle(doc, presupuesto);
   }
 
   dibujarFilaTotal(doc, y, totalUsd);
-  agregarPieLegal(doc);
+  agregarPieLegal(doc, y + ALTO_FILA_TOTAL + SEPARACION_TOTAL_PIE);
   agregarNumerosPagina(doc);
 
   const blob = doc.output('blob');

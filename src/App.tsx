@@ -352,6 +352,17 @@ function formatearDecimal4SinMiles(valor: number): string {
   return valor.toFixed(4).replace('.', ',');
 }
 
+function formatearDecimal3SinMiles(valor: number): string {
+  return valor.toFixed(3).replace('.', ',');
+}
+
+function formatearDecimal3(valor: number): string {
+  return new Intl.NumberFormat('es-AR', {
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
+  }).format(valor);
+}
+
 function normalizarTextoDecimal(valor: string, decimales: number): string {
   const conComa = valor.replace(/\./g, ',').replace(/[^\d,]/g, '');
   const partes = conComa.split(',');
@@ -625,7 +636,7 @@ function App() {
       return '';
     }
 
-    return formatearDecimal4SinMiles(
+    return formatearDecimal3SinMiles(
       calcularPesoTotalProductoProveedor(cantidad, largo, masaNominal),
     );
   }
@@ -660,7 +671,7 @@ function App() {
       anchoMm,
       espesorMm,
     );
-    return formatearDecimal4SinMiles(pesoKg);
+    return formatearDecimal3SinMiles(pesoKg);
   }
 
   function calcularMetrosTotales(): number {
@@ -933,7 +944,7 @@ function App() {
 
     setMetodoIngresoProducto('calculadora');
     setTipoCalculoProducto('peso');
-    setPesoTotalProducto(formatearDecimal4SinMiles(pesoCalculado));
+    setPesoTotalProducto(formatearDecimal3SinMiles(pesoCalculado));
 
     if (medidasTubo) {
       setDescripcionProducto((descripcionActual) =>
@@ -1116,7 +1127,7 @@ function App() {
 
   function manejarCambioPesoTotal(event: ChangeEvent<HTMLInputElement>) {
     setPesoTotalProducto(
-      normalizarTextoDecimal(event.currentTarget.value, 4),
+      normalizarTextoDecimal(event.currentTarget.value, 3),
     );
   }
 
@@ -1125,7 +1136,7 @@ function App() {
 
     if (!Number.isFinite(peso) || peso <= 0) return;
 
-    setPesoTotalProducto(formatearDecimal4SinMiles(peso));
+    setPesoTotalProducto(formatearDecimal3SinMiles(peso));
   }
 
   function manejarCambioPrecioUnitario(event: ChangeEvent<HTMLInputElement>) {
@@ -1326,7 +1337,7 @@ function App() {
           : '',
       );
       setPesoTotalProducto(
-        formatearDecimal4SinMiles(obtenerPesoTotalLinea(linea)),
+        formatearDecimal3SinMiles(obtenerPesoTotalLinea(linea)),
       );
     } else {
       const masaNominal =
@@ -1334,7 +1345,7 @@ function App() {
 
       setMasaNominalProducto(masaNominal);
       setPesoTotalProducto(
-        formatearDecimal4SinMiles(obtenerPesoTotalLinea(linea)),
+        formatearDecimal3SinMiles(obtenerPesoTotalLinea(linea)),
       );
 
       if (metodoIngreso === 'manual-peso') {
@@ -2894,7 +2905,7 @@ function App() {
                       className="text-input product-number-input"
                       inputMode="decimal"
                       autoComplete="off"
-                      placeholder="0,0000"
+                      placeholder="0,000"
                       value={pesoTotalProducto}
                       onChange={manejarCambioPesoTotal}
                       onBlur={completarPesoTotalProducto}
@@ -3058,7 +3069,7 @@ function App() {
                     className="text-input product-number-input"
                     inputMode="decimal"
                     autoComplete="off"
-                    placeholder="0,0000"
+                    placeholder="0,000"
                     value={pesoTotalProducto}
                     onChange={manejarCambioPesoTotal}
                     onBlur={completarPesoTotalProducto}
@@ -3335,7 +3346,7 @@ function App() {
                         ) : (linea.tipoCalculo ?? 'peso') === 'unidad' ? null : (
                           <span>
                             Peso total:{' '}
-                            <strong>{formatearDecimal4(pesoTotal)} kg</strong>
+                            <strong>{formatearDecimal3(pesoTotal)} kg</strong>
                           </span>
                         )}
 

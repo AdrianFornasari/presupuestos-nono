@@ -57,7 +57,7 @@ interface PerfilNormalizado {
 }
 
 const DENSIDAD_ACERO_KG_M3 = 7850;
-const LARGO_DEFAULT_PERFILES = '12000,0000';
+const LARGO_DEFAULT_PERFILES = '12,0000';
 
 const PERFILES_NORMALIZADOS: Partial<Record<FormaMetal, PerfilNormalizado[]>> = {
   'perfil-t': [
@@ -305,6 +305,25 @@ function formatearDecimal4(valor: number): string {
   }).format(valor);
 }
 
+function formatearDecimal3(valor: number): string {
+  return new Intl.NumberFormat('es-AR', {
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
+  }).format(valor);
+}
+
+function usaLargoEnMetros(forma: FormaMetal): boolean {
+  return esPerfil(forma) || esTubo(forma);
+}
+
+function parsearLargoMm(forma: FormaMetal, texto: string): number {
+  const largo = parsearDecimal(texto);
+
+  if (!Number.isFinite(largo)) return Number.NaN;
+
+  return usaLargoEnMetros(forma) ? largo * 1000 : largo;
+}
+
 function formatearImporte(valor: number): string {
   return new Intl.NumberFormat('es-AR', {
     minimumFractionDigits: 2,
@@ -449,7 +468,7 @@ function calcularValorUnitario(
   perfilNormalizadoId: string,
   valores: Record<string, string>,
 ): number {
-  const largoMm = parsearDecimal(valores.largoMm);
+  const largoMm = parsearLargoMm(forma, valores.largoMm);
 
   if (!Number.isFinite(largoMm) || largoMm <= 0) return Number.NaN;
 
@@ -764,7 +783,7 @@ export function calcularPesoTotalTuboCalculadora(
   }
 
   const valores = valoresIniciales(datos.forma);
-  valores.largoMm = String(datos.largoM * 1000);
+  valores.largoMm = String(datos.largoM);
   valores.espesorTuboMm = String(datos.espesorTuboMm);
 
   if (datos.forma === 'tubo-redondo') {
@@ -958,7 +977,7 @@ function MetalWeightCalculatorModal({
       return;
     }
 
-    const largoMm = parsearDecimal(valores.largoMm);
+    const largoMm = parsearLargoMm(forma, valores.largoMm);
 
     onAceptar({
       pesoCalculado: valorTotal,
@@ -1080,14 +1099,14 @@ function MetalWeightCalculatorModal({
               </label>
 
               <label className="metal-field">
-                Largo mm
+                Largo m
                 <input
                   name="largoMm"
                   value={valores.largoMm}
                   onChange={actualizarValor}
                   onBlur={completarValor}
                   inputMode="decimal"
-                  placeholder="12000,0000"
+                  placeholder="12,0000"
                 />
               </label>
             </>
@@ -1120,14 +1139,14 @@ function MetalWeightCalculatorModal({
               </label>
 
               <label className="metal-field">
-                Largo mm
+                Largo m
                 <input
                   name="largoMm"
                   value={valores.largoMm}
                   onChange={actualizarValor}
                   onBlur={completarValor}
                   inputMode="decimal"
-                  placeholder="12000,0000"
+                  placeholder="12,0000"
                 />
               </label>
             </>
@@ -1160,14 +1179,14 @@ function MetalWeightCalculatorModal({
               </label>
 
               <label className="metal-field">
-                Largo mm
+                Largo m
                 <input
                   name="largoMm"
                   value={valores.largoMm}
                   onChange={actualizarValor}
                   onBlur={completarValor}
                   inputMode="decimal"
-                  placeholder="12000,0000"
+                  placeholder="12,0000"
                 />
               </label>
             </>
@@ -1212,14 +1231,14 @@ function MetalWeightCalculatorModal({
               </label>
 
               <label className="metal-field">
-                Largo mm
+                Largo m
                 <input
                   name="largoMm"
                   value={valores.largoMm}
                   onChange={actualizarValor}
                   onBlur={completarValor}
                   inputMode="decimal"
-                  placeholder="12000,0000"
+                  placeholder="12,0000"
                 />
               </label>
             </>
@@ -1346,14 +1365,14 @@ function MetalWeightCalculatorModal({
                 </label>
 
                 <label className="metal-field">
-                  Largo mm
+                  Largo m
                   <input
                     name="largoMm"
                     value={valores.largoMm}
                     onChange={actualizarValor}
                     onBlur={completarValor}
                     inputMode="decimal"
-                    placeholder="12000,0000"
+                    placeholder="12,0000"
                   />
                 </label>
               </>
@@ -1410,14 +1429,14 @@ function MetalWeightCalculatorModal({
               </label>
 
               <label className="metal-field">
-                Largo mm
+                Largo m
                 <input
                   name="largoMm"
                   value={valores.largoMm}
                   onChange={actualizarValor}
                   onBlur={completarValor}
                   inputMode="decimal"
-                  placeholder="12000,0000"
+                  placeholder="12,0000"
                 />
               </label>
             </>
@@ -1452,7 +1471,9 @@ function MetalWeightCalculatorModal({
             {etiquetaTotal}:{' '}
             <strong>
               {Number.isFinite(valorTotal)
-                ? `${formatearDecimal4(valorTotal)} ${unidadResultado}`
+                ? `${cotizaPorMetro
+                    ? formatearDecimal4(valorTotal)
+                    : formatearDecimal3(valorTotal)} ${unidadResultado}`
                 : '-'}
             </strong>
           </div>

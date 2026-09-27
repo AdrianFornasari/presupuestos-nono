@@ -22,8 +22,16 @@ function obtenerTipoCalculoLinea(linea: LineaPresupuesto): TipoCalculoLinea {
   return linea.tipoCalculo ?? 'peso';
 }
 
+function redondearPesoTresDecimales(valor: number): number {
+  if (!Number.isFinite(valor)) return 0;
+
+  return Math.round((valor + Number.EPSILON) * 1000) / 1000;
+}
+
 function obtenerPesoTotalLinea(linea: LineaPresupuesto): number {
-  return linea.pesoTotal ?? linea.acumulado ?? 0;
+  return redondearPesoTresDecimales(
+    linea.pesoTotal ?? linea.acumulado ?? 0,
+  );
 }
 
 function calcularSubtotalDatos(datos: DatosLineaPresupuesto): number {
@@ -36,7 +44,9 @@ function calcularSubtotalDatos(datos: DatosLineaPresupuesto): number {
     return redondearImporte(datos.cantidad * datos.precioUnitario);
   }
 
-  return redondearImporte(datos.pesoTotal * datos.precioUnitario);
+  return redondearImporte(
+    redondearPesoTresDecimales(datos.pesoTotal) * datos.precioUnitario,
+  );
 }
 
 function calcularSubtotalLinea(linea: LineaPresupuesto): number {
@@ -99,7 +109,11 @@ export async function agregarLineaPresupuesto(
           ? 1
           : Math.max(...lineasActuales.map((linea) => linea.orden)) + 1;
 
-      const subtotal = calcularSubtotalDatos(datos);
+      const pesoTotal = redondearPesoTresDecimales(datos.pesoTotal);
+      const subtotal = calcularSubtotalDatos({
+        ...datos,
+        pesoTotal,
+      });
 
       const nuevaLinea: LineaPresupuesto = {
         id: crypto.randomUUID(),
@@ -114,8 +128,8 @@ export async function agregarLineaPresupuesto(
         ancho: datos.ancho,
         espesor: datos.espesor,
         masaNominal: datos.masaNominal,
-        pesoTotal: datos.pesoTotal,
-        acumulado: datos.pesoTotal,
+        pesoTotal,
+        acumulado: pesoTotal,
         subtotal,
         creadoEn: ahora,
         actualizadoEn: ahora,
@@ -145,7 +159,11 @@ export async function actualizarLineaPresupuesto(
         throw new Error('No se encontró el producto para editar.');
       }
 
-      const subtotal = calcularSubtotalDatos(datos);
+      const pesoTotal = redondearPesoTresDecimales(datos.pesoTotal);
+      const subtotal = calcularSubtotalDatos({
+        ...datos,
+        pesoTotal,
+      });
 
       await db.lineasPresupuesto.update(lineaId, {
         descripcion: datos.descripcion,
@@ -157,8 +175,8 @@ export async function actualizarLineaPresupuesto(
         ancho: datos.ancho,
         espesor: datos.espesor,
         masaNominal: datos.masaNominal,
-        pesoTotal: datos.pesoTotal,
-        acumulado: datos.pesoTotal,
+        pesoTotal,
+        acumulado: pesoTotal,
         subtotal,
         actualizadoEn: ahora,
       });
