@@ -8,6 +8,7 @@ import { db } from './appDb';
 interface DatosLineaPresupuesto {
   descripcion: string;
   cantidad: number;
+  unidades?: number;
   unidad: string;
   precioUnitario: number;
   pesoTotal: number;
@@ -20,6 +21,12 @@ interface DatosLineaPresupuesto {
 
 function obtenerTipoCalculoLinea(linea: LineaPresupuesto): TipoCalculoLinea {
   return linea.tipoCalculo ?? 'peso';
+}
+
+function validarUnidades(unidades: number | undefined): void {
+  if (unidades !== undefined && (!Number.isSafeInteger(unidades) || unidades <= 0)) {
+    throw new Error('Las unidades deben ser un número entero mayor que cero.');
+  }
 }
 
 function redondearPesoTresDecimales(valor: number): number {
@@ -92,6 +99,7 @@ export async function agregarLineaPresupuesto(
   presupuestoId: string,
   datos: DatosLineaPresupuesto,
 ): Promise<void> {
+  validarUnidades(datos.unidades);
   const ahora = fechaHoraAhoraISO();
 
   await db.transaction(
@@ -121,6 +129,7 @@ export async function agregarLineaPresupuesto(
         orden,
         descripcion: datos.descripcion,
         cantidad: datos.cantidad,
+        unidades: datos.unidades,
         unidad: datos.unidad,
         precioUnitario: datos.precioUnitario,
         tipoCalculo: datos.tipoCalculo,
@@ -146,6 +155,7 @@ export async function actualizarLineaPresupuesto(
   lineaId: string,
   datos: DatosLineaPresupuesto,
 ): Promise<void> {
+  validarUnidades(datos.unidades);
   const ahora = fechaHoraAhoraISO();
 
   await db.transaction(
@@ -168,6 +178,7 @@ export async function actualizarLineaPresupuesto(
       await db.lineasPresupuesto.update(lineaId, {
         descripcion: datos.descripcion,
         cantidad: datos.cantidad,
+        unidades: datos.unidades ?? lineaExistente.unidades,
         unidad: datos.unidad,
         precioUnitario: datos.precioUnitario,
         tipoCalculo: datos.tipoCalculo,

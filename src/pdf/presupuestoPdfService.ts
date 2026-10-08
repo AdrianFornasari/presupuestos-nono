@@ -97,7 +97,7 @@ function obtenerTipoCalculoLinea(
 }
 
 function formatearCantidadFisica(linea: LineaPresupuesto): string {
-  return String(linea.cantidad);
+  return String(linea.unidades ?? linea.cantidad);
 }
 
 function formatearCantidadCotizada(linea: LineaPresupuesto): string {
@@ -149,19 +149,21 @@ function obtenerColumnasTabla(): ColumnasTabla {
   };
 }
 
-function dibujarEncabezado(doc: jsPDF, presupuesto: Presupuesto): void {
+function dibujarEncabezado(doc: jsPDF, presupuesto: Presupuesto): number {
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.3);
+  doc.rect(TABLA_X, 10, TABLA_ANCHO, 44);
   doc.setFont('helvetica', 'bold');
   setFontSizeEscalado(doc, 15);
-  doc.text('INDUSTRIAL ACEROS SRL', 14, 16);
+  doc.text('INDUSTRIAL ACEROS SRL', 18, 16);
 
   doc.setFont('helvetica', 'normal');
   setFontSizeEscalado(doc, 9);
-  doc.text('C.U.I.T.: 30-71696322-1', 14, 22);
-  doc.text('I.Brutos: 30716963221', 14, 27);
-  doc.text('Fec. Ini.Act.: 01-Aug-20', 14, 32);
-  doc.text('341-6768783', 14, 39);
-  doc.text('(2000) ROSARIO - Pcia. SANTA FE', 14, 44);
-  doc.text('IVA RESPONSABLE INSCRIPTO', 14, 49);
+  doc.text('C.U.I.T.: 30-71696322-1', 18, 22);
+  doc.text('I.Brutos: 30716963221', 18, 27);
+  doc.text('Fec. Ini.Act.: 01-Aug-20', 18, 32);
+  doc.text('(2000) ROSARIO - Pcia. SANTA FE', 18, 44);
+  doc.text('IVA RESPONSABLE INSCRIPTO', 18, 49);
 
   doc.setFont('helvetica', 'bold');
   setFontSizeEscalado(doc, 15);
@@ -178,20 +180,40 @@ function dibujarEncabezado(doc: jsPDF, presupuesto: Presupuesto): void {
 
   doc.setFont('helvetica', 'bold');
   setFontSizeEscalado(doc, 10);
-  doc.text('CLIENTE:', 14, 68);
-  doc.text('TELÉFONO:', 14, 76);
+  doc.text('CLIENTE:', 18, 68);
+  doc.text('MONEDA:', 126, 68);
+  doc.text('CONTACTO:', 126, 76);
 
   doc.setFont('helvetica', 'normal');
-  doc.text(presupuesto.clienteNombre || '-', 42, 68);
-  doc.text(presupuesto.clienteTelefono || '-', 42, 76);
+  const clienteLineas = doc.splitTextToSize(
+    presupuesto.clienteNombre || '-', 74,
+  ) as string[];
+  const contactoLineas = doc.splitTextToSize(
+    presupuesto.vendedor || 'CARLOS CENTENO', 42,
+  ) as string[];
+  doc.text(clienteLineas, 46, 68, { lineHeightFactor: 1.15 });
+  doc.text('USD', 152, 68);
+  doc.text(contactoLineas, 152, 76, { lineHeightFactor: 1.15 });
 
+  const telefonoY = 68 + Math.max(8, clienteLineas.length * 4.5);
+  const celularY = 76 + Math.max(8, contactoLineas.length * 4.5);
   doc.setFont('helvetica', 'bold');
-  doc.text('MONEDA:', 130, 68);
-  doc.text('CONTACTO:', 130, 76);
-
+  doc.text('TELÉFONO:', 18, telefonoY);
+  doc.text('CELULAR:', 126, celularY);
   doc.setFont('helvetica', 'normal');
-  doc.text('USD', 154, 68);
-  doc.text(presupuesto.vendedor || 'CARLOS CENTENO', 154, 76);
+  const telefonoLineas = doc.splitTextToSize(
+    presupuesto.clienteTelefono || '-', 74,
+  ) as string[];
+  doc.text(telefonoLineas, 46, telefonoY, { lineHeightFactor: 1.15 });
+  doc.text('341-6768783', 152, celularY);
+
+  const finDatos = Math.max(
+    telefonoY + (telefonoLineas.length - 1) * 4.5,
+    celularY,
+  ) + 5;
+  doc.rect(TABLA_X, 60, TABLA_ANCHO, finDatos - 60);
+
+  return Math.max(Y_INICIO_TABLA, finDatos + 6);
 }
 
 function dibujarCabeceraTabla(doc: jsPDF, y: number): void {
@@ -409,10 +431,10 @@ function iniciarPaginaDeDetalle(
   doc: jsPDF,
   presupuesto: Presupuesto,
 ): number {
-  dibujarEncabezado(doc, presupuesto);
-  dibujarCabeceraTabla(doc, Y_INICIO_TABLA);
+  const inicioTabla = dibujarEncabezado(doc, presupuesto);
+  dibujarCabeceraTabla(doc, inicioTabla);
 
-  return Y_INICIO_TABLA + ALTO_CABECERA_TABLA;
+  return inicioTabla + ALTO_CABECERA_TABLA;
 }
 
 export async function generarYGuardarPdfPresupuesto(

@@ -495,6 +495,7 @@ function App() {
     useState<TipoCalculoLinea>('peso');
   const [descripcionProducto, setDescripcionProducto] = useState('');
   const [cantidadProducto, setCantidadProducto] = useState('');
+  const [unidadesProducto, setUnidadesProducto] = useState('1');
   const [largoProducto, setLargoProducto] = useState('12,00');
   const [anchoProducto, setAnchoProducto] = useState('');
   const [espesorProducto, setEspesorProducto] = useState('');
@@ -719,6 +720,7 @@ function App() {
   }
 
   function reiniciarFormularioProducto() {
+    setUnidadesProducto('1');
     setTipoProductoSeleccionado('');
     setProductoProveedorId('');
     setMetodoIngresoProducto('proveedor');
@@ -736,6 +738,7 @@ function App() {
   }
 
   function manejarCambioTipoProducto(event: ChangeEvent<HTMLSelectElement>) {
+    setUnidadesProducto('1');
     const tipo = event.currentTarget.value;
 
     setTipoProductoSeleccionado(tipo);
@@ -833,6 +836,7 @@ function App() {
   }
 
   function prepararIngresoPesoManual() {
+    setUnidadesProducto('1');
     const descripcionManual = esTipoSoloPesoManual(tipoProductoSeleccionado)
       ? tipoProductoSeleccionado
       : descripcionProducto;
@@ -1271,7 +1275,11 @@ function App() {
     const esRecortes = linea.descripcion.trim().startsWith('Recortes');
     const esMallas =
       tipoCalculo === 'unidad' || linea.descripcion.trim().startsWith('Mallas');
-    const metodoIngreso: MetodoIngresoProducto = esRecortes
+    const esIngresoPesoManual =
+      esRecortes ||
+      (tipoCalculo === 'peso' && linea.unidades !== undefined &&
+        !linea.largo && !linea.masaNominal);
+    const metodoIngreso: MetodoIngresoProducto = esIngresoPesoManual
       ? 'manual-peso'
       : esMallas
         ? 'manual-unidad'
@@ -1286,6 +1294,7 @@ function App() {
     setTipoCalculoProducto(tipoCalculo);
     setDescripcionProducto(linea.descripcion);
     setCantidadProducto(String(linea.cantidad));
+    setUnidadesProducto(String(linea.unidades ?? linea.cantidad));
     setPrecioUnitarioProducto(
       formatearDecimal4SinMiles(linea.precioUnitario),
     );
@@ -1448,6 +1457,16 @@ function App() {
     const espesor = parsearNumeroDecimal(espesorProducto);
     const precioUnitario = parsearNumeroDecimal(precioUnitarioProducto);
     let pesoTotal = parsearNumeroDecimal(pesoTotalProducto);
+    const unidades = metodoIngresoProducto === 'manual-peso'
+      ? Number(unidadesProducto)
+      : lineaEnEdicion?.unidades;
+
+    if (metodoIngresoProducto === 'manual-peso' &&
+        (!/^\d+$/.test(unidadesProducto) || !Number.isSafeInteger(unidades) ||
+          (unidades ?? 0) <= 0)) {
+      setMensaje('Las unidades deben ser un número entero mayor que cero.');
+      return;
+    }
 
     if (metodoIngresoProducto === 'proveedor' && !tipoProductoSeleccionado) {
       setMensaje('Seleccioná un tipo de producto.');
@@ -1565,6 +1584,7 @@ function App() {
     const datosLinea = {
       descripcion: descripcionLinea,
       cantidad,
+      unidades,
       unidad:
         tipoCalculoLinea === 'metro'
           ? 'm'
@@ -2897,6 +2917,24 @@ function App() {
 
             {metodoIngresoProducto === 'manual-peso' && (
               <>
+                <label className="field-label product-full-field">
+                  Unidades
+                  <input
+                    name="unidades"
+                    className="text-input product-number-input"
+                    inputMode="numeric"
+                    pattern="[0-9]+"
+                    autoComplete="off"
+                    required
+                    placeholder="Entero"
+                    value={unidadesProducto}
+                    onChange={(event) => {
+                      const valor = event.currentTarget.value;
+                      if (/^\d*$/.test(valor)) setUnidadesProducto(valor);
+                    }}
+                  />
+                  <span>Para la columna Unid. del PDF. No modifica el importe.</span>
+                </label>
                 <div className="product-two-column-grid">
                   <label className="field-label">
                     Peso total (kg)
@@ -3310,8 +3348,8 @@ function App() {
 
                       <div className="product-card-left-values">
                         <span>
-                          Cantidad:{' '}
-                          <strong>{formatearEntero(linea.cantidad)}</strong>
+                          {linea.unidades !== undefined ? 'Unidades: ' : 'Cantidad: '}
+                          <strong>{formatearEntero(linea.unidades ?? linea.cantidad)}</strong>
                         </span>
 
                         {(linea.tipoCalculo ?? 'peso') === 'plancha' ? (

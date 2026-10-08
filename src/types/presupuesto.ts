@@ -33,6 +33,8 @@ export interface LineaPresupuesto {
 
   descripcion: string;
   cantidad: number;
+  /** Cantidad física informativa del ingreso manual; no interviene en cálculos. */
+  unidades?: number;
   unidad: string;
 
   precioUnitario: number;
