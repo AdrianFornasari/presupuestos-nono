@@ -35,10 +35,9 @@ import {
 import {
   isSpeechFeedbackSupported,
   speakSpeechFeedback,
-  speakSpeechFeedbackSequence,
   stopSpeechFeedback,
 } from '../accessibility/browserSpeechFeedback';
-import { buildBudgetSpeechReview } from '../accessibility/budgetSpeechReview';
+import BudgetSpeechReviewModal from './BudgetSpeechReviewModal';
 import type { LineaPresupuesto } from '../../types/presupuesto';
 import { detectVoiceControlCommand } from '../control/voiceControlCommands';
 import type {
@@ -210,7 +209,12 @@ function VoiceCapturePanel({
   const [controlMessage, setControlMessage] = useState('');
   const [readyForNextProduct, setReadyForNextProduct] = useState(false);
   const [showFinalization, setShowFinalization] = useState(false);
-  const [readingBudget, setReadingBudget] = useState(false);
+  const [budgetReview, setBudgetReview] = useState<{
+    lineas: readonly LineaPresupuesto[];
+    clienteNombre: string;
+    totalUsdTexto: string;
+  } | null>(null);
+  const readingBudget = budgetReview !== null;
   const [finalizingAction, setFinalizingAction] = useState<'share' | 'download' | null>(null);
   const [finalizationError, setFinalizationError] = useState('');
   const [pdfCompleted, setPdfCompleted] = useState(false);
@@ -1134,11 +1138,13 @@ function VoiceCapturePanel({
     if (!speechFeedbackSupported || !lineasPresupuesto.length) return;
     stopSpeechFeedback();
     lastSpokenMessageRef.current = spokenFeedbackText;
-    const messages = buildBudgetSpeechReview(lineasPresupuesto, clienteNombre, totalUsdTexto);
-    setReadingBudget(true);
-    speakSpeechFeedbackSequence(messages, () => {
-      if (mountedRef.current) setReadingBudget(false);
-    });
+    setBudgetReview({ lineas: [...lineasPresupuesto], clienteNombre, totalUsdTexto });
+  }
+
+  function cerrarLecturaPresupuesto() {
+    stopSpeechFeedback();
+    lastSpokenMessageRef.current = spokenFeedbackText;
+    setBudgetReview(null);
   }
 
   async function ejecutarFinalizacionPdf(action: 'share' | 'download') {
@@ -3203,16 +3209,20 @@ function VoiceCapturePanel({
             >
               {readingBudget ? 'Leyendo productos...' : 'Leer productos cotizados'}
             </button>
-            {readingBudget && (
-              <button type="button" className="secondary-button" onClick={stopSpeechFeedback}>
-                Detener lectura
-              </button>
-            )}
           </div>
           {!speechFeedbackSupported && (
             <div className="empty-text" style={{ marginTop: '8px' }}>
               Este navegador no ofrece lectura hablada.
             </div>
+          )}
+
+          {budgetReview && (
+            <BudgetSpeechReviewModal
+              lineas={budgetReview.lineas}
+              clienteNombre={budgetReview.clienteNombre}
+              totalUsdTexto={budgetReview.totalUsdTexto}
+              onClose={cerrarLecturaPresupuesto}
+            />
           )}
 
           <div

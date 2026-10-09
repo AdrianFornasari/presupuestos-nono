@@ -6,18 +6,24 @@ function decimalHablado(valor: number, decimales: number): string {
 }
 
 /** Lee valores ya cotizados; no calcula pesos ni importes. */
-export function buildBudgetSpeechReview(
+export interface BudgetSpeechReviewSection {
+  productIndex: number | null;
+  messages: string[];
+}
+
+export function buildBudgetSpeechReviewSections(
   lineas: readonly LineaPresupuesto[],
   clienteNombre: string,
   totalUsdTexto: string,
-): string[] {
+): BudgetSpeechReviewSection[] {
   if (lineas.length === 0) return [];
 
-  const mensajes = [
+  const sections: BudgetSpeechReviewSection[] = [{ productIndex: null, messages: [
     `Productos cotizados${clienteNombre.trim() ? ` para ${clienteNombre.trim()}` : ''}. ${lineas.length} productos.`,
-  ];
+  ] }];
 
   [...lineas].sort((a, b) => a.orden - b.orden).forEach((linea, indice) => {
+    const mensajes: string[] = [];
     const tipo = linea.tipoCalculo ?? 'peso';
     const descripcion = prepareSpeechFeedbackText(linea.descripcion)
       .replace(/\bmm\b/g, 'milímetros')
@@ -40,8 +46,18 @@ export function buildBudgetSpeechReview(
     const unidadPrecio = tipo === 'metro' ? 'metro' : tipo === 'unidad' ? 'unidad' : 'kilo';
     mensajes.push(`Precio ${decimalHablado(linea.precioUnitario, 4)} dólares por ${unidadPrecio}.`);
     mensajes.push(`Importe ${decimalHablado(linea.subtotal, 2)} dólares.`);
+    sections.push({ productIndex: indice, messages: mensajes });
   });
 
-  mensajes.push(`Fin de la lista. Total ${totalUsdTexto.replace(',', ' coma ')} dólares.`);
-  return mensajes;
+  sections.push({ productIndex: null, messages: [`Fin de la lista. Total ${totalUsdTexto.replace(',', ' coma ')} dólares.`] });
+  return sections;
+}
+
+export function buildBudgetSpeechReview(
+  lineas: readonly LineaPresupuesto[],
+  clienteNombre: string,
+  totalUsdTexto: string,
+): string[] {
+  return buildBudgetSpeechReviewSections(lineas, clienteNombre, totalUsdTexto)
+    .flatMap((section) => section.messages);
 }

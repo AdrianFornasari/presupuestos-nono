@@ -6,8 +6,9 @@ export interface SpeechFeedbackOptions {
 }
 
 const DEFAULT_LANGUAGE = 'es-AR';
+export type SpeechFeedbackFinishReason = 'completed' | 'cancelled' | 'error';
 let sequenceVersion = 0;
-let finishActiveSequence: (() => void) | undefined;
+let finishActiveSequence: ((reason: SpeechFeedbackFinishReason) => void) | undefined;
 
 export function isSpeechFeedbackSupported(): boolean {
   return (
@@ -60,7 +61,7 @@ export function stopSpeechFeedback(): void {
   const onFinish = finishActiveSequence;
   finishActiveSequence = undefined;
   if (isSpeechFeedbackSupported()) window.speechSynthesis.cancel();
-  onFinish?.();
+  onFinish?.('cancelled');
 }
 
 export function speakSpeechFeedback(
@@ -99,7 +100,9 @@ function createSpeechUtterance(
 /** Encadena mensajes breves y descarta callbacks pendientes al cancelar. */
 export function speakSpeechFeedbackSequence(
   messages: readonly string[],
-  onFinish?: () => void,
+  onFinish?: (reason: SpeechFeedbackFinishReason) => void,
+  options: SpeechFeedbackOptions = {},
+  onMessage?: (index: number) => void,
 ): boolean {
   const texts = messages.map(prepareSpeechFeedbackText).filter(Boolean);
   if (!texts.length || !isSpeechFeedbackSupported()) return false;
@@ -109,24 +112,25 @@ export function speakSpeechFeedbackSequence(
   finishActiveSequence = onFinish;
   let index = 0;
 
-  function finish() {
+  function finish(reason: SpeechFeedbackFinishReason) {
     if (version !== sequenceVersion) return;
     const callback = finishActiveSequence;
     finishActiveSequence = undefined;
     sequenceVersion += 1;
-    callback?.();
+    callback?.(reason);
   }
 
   function next() {
     if (version !== sequenceVersion) return;
     if (index >= texts.length) {
-      finish();
+      finish('completed');
       return;
     }
-    const utterance = createSpeechUtterance(texts[index], {});
+    const utterance = createSpeechUtterance(texts[index], options);
+    onMessage?.(index);
     index += 1;
     utterance.onend = next;
-    utterance.onerror = finish;
+    utterance.onerror = () => finish('error');
     window.speechSynthesis.speak(utterance);
   }
 
