@@ -6,6 +6,8 @@ export interface SpeechFeedbackOptions {
 }
 
 const DEFAULT_LANGUAGE = 'es-AR';
+let sequenceVersion = 0;
+let finishActiveSequence: (() => void) | undefined;
 
 export function isSpeechFeedbackSupported(): boolean {
   return (
@@ -54,8 +56,11 @@ export function prepareSpeechFeedbackText(text: string): string {
 }
 
 export function stopSpeechFeedback(): void {
-  if (!isSpeechFeedbackSupported()) return;
-  window.speechSynthesis.cancel();
+  sequenceVersion += 1;
+  const onFinish = finishActiveSequence;
+  finishActiveSequence = undefined;
+  if (isSpeechFeedbackSupported()) window.speechSynthesis.cancel();
+  onFinish?.();
 }
 
 export function speakSpeechFeedback(
@@ -65,8 +70,18 @@ export function speakSpeechFeedback(
   const cleanText = prepareSpeechFeedbackText(text);
   if (!cleanText || !isSpeechFeedbackSupported()) return false;
 
+  stopSpeechFeedback();
+  const utterance = createSpeechUtterance(cleanText, options);
+  window.speechSynthesis.speak(utterance);
+  return true;
+}
+
+function createSpeechUtterance(
+  text: string,
+  options: SpeechFeedbackOptions,
+): SpeechSynthesisUtterance {
   const language = options.language ?? DEFAULT_LANGUAGE;
-  const utterance = new SpeechSynthesisUtterance(cleanText);
+  const utterance = new SpeechSynthesisUtterance(text);
   const voice = findSpanishVoice(language);
 
   utterance.lang = language;
@@ -78,7 +93,43 @@ export function speakSpeechFeedback(
     utterance.voice = voice;
   }
 
-  window.speechSynthesis.cancel();
-  window.speechSynthesis.speak(utterance);
+  return utterance;
+}
+
+/** Encadena mensajes breves y descarta callbacks pendientes al cancelar. */
+export function speakSpeechFeedbackSequence(
+  messages: readonly string[],
+  onFinish?: () => void,
+): boolean {
+  const texts = messages.map(prepareSpeechFeedbackText).filter(Boolean);
+  if (!texts.length || !isSpeechFeedbackSupported()) return false;
+
+  stopSpeechFeedback();
+  const version = sequenceVersion;
+  finishActiveSequence = onFinish;
+  let index = 0;
+
+  function finish() {
+    if (version !== sequenceVersion) return;
+    const callback = finishActiveSequence;
+    finishActiveSequence = undefined;
+    sequenceVersion += 1;
+    callback?.();
+  }
+
+  function next() {
+    if (version !== sequenceVersion) return;
+    if (index >= texts.length) {
+      finish();
+      return;
+    }
+    const utterance = createSpeechUtterance(texts[index], {});
+    index += 1;
+    utterance.onend = next;
+    utterance.onerror = finish;
+    window.speechSynthesis.speak(utterance);
+  }
+
+  next();
   return true;
 }

@@ -35,8 +35,11 @@ import {
 import {
   isSpeechFeedbackSupported,
   speakSpeechFeedback,
+  speakSpeechFeedbackSequence,
   stopSpeechFeedback,
 } from '../accessibility/browserSpeechFeedback';
+import { buildBudgetSpeechReview } from '../accessibility/budgetSpeechReview';
+import type { LineaPresupuesto } from '../../types/presupuesto';
 import { detectVoiceControlCommand } from '../control/voiceControlCommands';
 import type {
   SpeechToTextError,
@@ -64,6 +67,7 @@ interface VoiceCapturePanelProps {
   onDeleteAddedProduct?: (lineId: string) => Promise<void>;
   clienteNombre?: string;
   cantidadLineas?: number;
+  lineasPresupuesto?: readonly LineaPresupuesto[];
   totalUsdTexto?: string;
   clienteCambiosPendientes?: boolean;
   onEditClient?: () => void;
@@ -161,6 +165,7 @@ function VoiceCapturePanel({
   onDeleteAddedProduct,
   clienteNombre = '',
   cantidadLineas = 0,
+  lineasPresupuesto = [],
   totalUsdTexto = '0,00',
   clienteCambiosPendientes = false,
   onEditClient,
@@ -205,6 +210,7 @@ function VoiceCapturePanel({
   const [controlMessage, setControlMessage] = useState('');
   const [readyForNextProduct, setReadyForNextProduct] = useState(false);
   const [showFinalization, setShowFinalization] = useState(false);
+  const [readingBudget, setReadingBudget] = useState(false);
   const [finalizingAction, setFinalizingAction] = useState<'share' | 'download' | null>(null);
   const [finalizationError, setFinalizationError] = useState('');
   const [pdfCompleted, setPdfCompleted] = useState(false);
@@ -390,6 +396,7 @@ function VoiceCapturePanel({
     if (
       !speechFeedbackEnabled ||
       !speechFeedbackSupported ||
+      readingBudget ||
       status === 'listening' ||
       status === 'requesting-permission' ||
       !spokenFeedbackText
@@ -411,6 +418,7 @@ function VoiceCapturePanel({
     speakAccessibilityMessage,
     speechFeedbackEnabled,
     speechFeedbackSupported,
+    readingBudget,
     spokenFeedbackText,
     status,
   ]);
@@ -1122,8 +1130,20 @@ function VoiceCapturePanel({
     setPdfCompleted(false);
   }
 
+  function leerProductosCotizados() {
+    if (!speechFeedbackSupported || !lineasPresupuesto.length) return;
+    stopSpeechFeedback();
+    lastSpokenMessageRef.current = spokenFeedbackText;
+    const messages = buildBudgetSpeechReview(lineasPresupuesto, clienteNombre, totalUsdTexto);
+    setReadingBudget(true);
+    speakSpeechFeedbackSequence(messages, () => {
+      if (mountedRef.current) setReadingBudget(false);
+    });
+  }
+
   async function ejecutarFinalizacionPdf(action: 'share' | 'download') {
     if (!presupuestoListoParaFinalizar || finalizingAction) return;
+    stopSpeechFeedback();
 
     const callback = action === 'share' ? onSharePdf : onDownloadPdf;
 
@@ -3173,6 +3193,27 @@ function VoiceCapturePanel({
       {showFinalization && (
         <div className="message-box" style={{ marginTop: '12px' }}>
           <strong>Finalización del presupuesto</strong>
+
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '10px' }}>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={leerProductosCotizados}
+              disabled={!speechFeedbackSupported || !lineasPresupuesto.length || Boolean(finalizingAction) || readingBudget}
+            >
+              {readingBudget ? 'Leyendo productos...' : 'Leer productos cotizados'}
+            </button>
+            {readingBudget && (
+              <button type="button" className="secondary-button" onClick={stopSpeechFeedback}>
+                Detener lectura
+              </button>
+            )}
+          </div>
+          {!speechFeedbackSupported && (
+            <div className="empty-text" style={{ marginTop: '8px' }}>
+              Este navegador no ofrece lectura hablada.
+            </div>
+          )}
 
           <div
             style={{

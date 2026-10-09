@@ -2798,6 +2798,7 @@ function App() {
               onDeleteAddedProduct={eliminarProductoAgregadoDesdeVoz}
               clienteNombre={presupuestoActual.clienteNombre}
               cantidadLineas={lineas.length}
+              lineasPresupuesto={lineas}
               totalUsdTexto={formatearImporteUSD(presupuestoActual.total)}
               clienteCambiosPendientes={clienteDatosModificados}
               onEditClient={abrirEdicionClienteDesdeVoz}
