@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -9,6 +10,7 @@ import {
 } from 'react';
 import ConfirmDialog, { type ConfirmationOptions } from './components/ConfirmDialog';
 import AppVersionInfo from './components/AppVersionInfo';
+import { setUpdateReloadAllowed } from './pwa/foregroundUpdate';
 import { descargarRegistroVoz } from './db/voiceLogExportService';
 import MetalWeightCalculatorModal, {
   calcularPesoTotalTuboCalculadora,
@@ -569,6 +571,17 @@ function App() {
     useState<LineaPresupuesto | null>(null);
   const [productoFormVersion, setProductoFormVersion] = useState(0);
   const [productoFormColapsado, setProductoFormColapsado] = useState(false);
+
+  useLayoutEffect(() => {
+    setUpdateReloadAllowed(
+      pantalla === 'menu' && !driveTrabajando && !exportandoRegistroVoz &&
+      !guardandoVisita && !sincronizandoVisitas && !confirmacion && !avisoModal &&
+      !selectorProductoAbierto && !calculadoraAbierta,
+    );
+    return () => setUpdateReloadAllowed(false);
+  }, [pantalla, driveTrabajando, exportandoRegistroVoz, guardandoVisita,
+    sincronizandoVisitas, confirmacion, avisoModal, selectorProductoAbierto,
+    calculadoraAbierta]);
 
   const inputBackupRef = useRef<HTMLInputElement | null>(null);
   const productoFormRef = useRef<HTMLFormElement | null>(null);

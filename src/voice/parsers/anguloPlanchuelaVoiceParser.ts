@@ -55,7 +55,7 @@ const NUMBER_PATTERN = '(\\d+(?:,\\d+)?)';
 
 const TYPE_PATTERNS: Record<AnguloPlanchuelaCanonicalType, string> = {
   'Ángulo alas iguales':
-    '(?:(?:perfil(?:es)?\\s+)?(?:ángulo|angulo)(?:s)?(?:\\s+alas\\s+iguales)?)',
+    '(?:(?:perfil(?:es)?\\s+)?(?:ángulo|angulo)(?:s)?(?:\\s+(?:de\\s+)?alas\\s+iguales)?)',
   Planchuela: 'planchuela(?:s)?',
 };
 
@@ -137,7 +137,7 @@ function extractImperialDimensions(
 
   // El largo y el precio pertenecen al pedido, no a la sección de la variante.
   tail = tail.replace(
-    /\s+(?:(?:largo\s+)?\d+(?:,\d+)?\s*m\b|(?:a|precio)\s+\d).*$/iu,
+    /\s+(?:(?:(?:largo|longitud)\s+)?\d+(?:,\d+)?\s*m\b|(?:a|precio)\s+\d).*$/iu,
     '',
   );
   tail = tail.replace(/\s+de\s*$/iu, '').trim();

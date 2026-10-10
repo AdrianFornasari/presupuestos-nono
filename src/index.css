@@ -820,3 +820,13 @@ a:focus-visible {
 .app-version { margin: 16px 0; font-weight: 800; color: var(--texto); }
 .app-screen-info { margin-bottom: 18px; color: var(--texto-secundario); }
 .app-screen-info summary { cursor: pointer; padding: 12px 0; }
+
+.pwa-update-notice {
+  margin: 0 auto 1rem;
+  max-width: 54rem;
+  padding: 1rem;
+  background: var(--superficie);
+  color: var(--texto);
+  border: 1px solid var(--borde);
+  border-radius: 0.5rem;
+}

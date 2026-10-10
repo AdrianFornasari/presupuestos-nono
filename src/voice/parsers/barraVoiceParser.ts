@@ -92,7 +92,7 @@ function extractSize(text: string, canonicalType: BarraCanonicalType): number | 
   let tail = text.slice(typeMatch.index + typeMatch[0].length).trim();
   tail = tail.replace(/^de\s+/iu, '');
   tail = tail.replace(
-    /\s+(?:(?:largo\s+)?\d+(?:,\d+)?\s*m\b|(?:a|precio)\s+\d).*$/iu,
+    /\s+(?:(?:(?:largo|longitud)\s+)?\d+(?:,\d+)?\s*m\b|(?:a|precio)\s+\d).*$/iu,
     '',
   );
   tail = tail.replace(/\s+de\s*$/iu, '').trim();
