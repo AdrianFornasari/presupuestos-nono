@@ -1532,7 +1532,7 @@ function VoiceCapturePanel({
             style={{
               marginTop: '16px',
               paddingTop: '14px',
-              borderTop: '1px solid rgba(128, 128, 128, 0.5)',
+              borderTop: '1px solid var(--borde-suave)',
             }}
           >
             <strong>Diagnóstico técnico</strong>
@@ -2906,7 +2906,7 @@ function VoiceCapturePanel({
           style={{
             marginTop: '16px',
             paddingTop: '16px',
-            borderTop: '1px solid rgba(128, 128, 128, 0.5)',
+            borderTop: '1px solid var(--borde-suave)',
           }}
         >
           <strong>

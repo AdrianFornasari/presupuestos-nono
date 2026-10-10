@@ -7,6 +7,8 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from 'react';
+import ConfirmDialog, { type ConfirmationOptions } from './components/ConfirmDialog';
+import AppVersionInfo from './components/AppVersionInfo';
 import MetalWeightCalculatorModal, {
   calcularPesoTotalTuboCalculadora,
   type ResultadoCalculoMetal,
@@ -453,6 +455,28 @@ function App() {
   const [lineas, setLineas] = useState<LineaPresupuesto[]>([]);
   const [mensaje, setMensaje] = useState('');
   const [avisoModal, setAvisoModal] = useState('');
+  const [confirmacion, setConfirmacion] = useState<ConfirmationOptions | null>(null);
+  const confirmacionResolver = useRef<((aceptar: boolean) => void) | null>(null);
+
+  useEffect(() => () => {
+    confirmacionResolver.current?.(false);
+    confirmacionResolver.current = null;
+  }, []);
+
+  function solicitarConfirmacion(opciones: ConfirmationOptions): Promise<boolean> {
+    if (confirmacionResolver.current) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      confirmacionResolver.current = resolve;
+      setConfirmacion(opciones);
+    });
+  }
+
+  function resolverConfirmacion(aceptar: boolean) {
+    const resolve = confirmacionResolver.current;
+    confirmacionResolver.current = null;
+    setConfirmacion(null);
+    resolve?.(aceptar);
+  }
   const [estadoAlmacenamiento, setEstadoAlmacenamiento] =
     useState<EstadoAlmacenamientoPersistente | null>(null);
 
@@ -1673,7 +1697,11 @@ function App() {
   async function borrarLinea(lineaId: string) {
     if (!presupuestoActual) return;
 
-    const confirmar = window.confirm('¿Eliminar esta línea del presupuesto?');
+    const confirmar = await solicitarConfirmacion({
+      title: 'Eliminar producto',
+      message: '¿Eliminar esta línea del presupuesto?',
+      confirmLabel: 'Sí, eliminar',
+    });
 
     if (!confirmar) return;
 
@@ -1793,16 +1821,19 @@ function App() {
   }
 
   async function restaurarBackup(event: ChangeEvent<HTMLInputElement>) {
-    const archivo = event.target.files?.[0];
+    const input = event.currentTarget;
+    const archivo = input.files?.[0];
 
     if (!archivo) return;
 
-    const confirmar = window.confirm(
-      'Esto reemplazará los datos actuales de la tablet por los del backup. ¿Continuar?',
-    );
+    const confirmar = await solicitarConfirmacion({
+      title: 'Restaurar copia de seguridad',
+      message: 'Esto reemplazará los datos actuales de la tablet por los del backup. ¿Continuar?',
+      confirmLabel: 'Sí, restaurar',
+    });
 
     if (!confirmar) {
-      event.target.value = '';
+      input.value = '';
       return;
     }
 
@@ -1819,7 +1850,7 @@ function App() {
         error instanceof Error ? error.message : 'Error desconocido.';
       setMensaje(`No se pudo restaurar el backup. ${detalle}`);
     } finally {
-      event.target.value = '';
+      input.value = '';
     }
   }
 
@@ -2004,6 +2035,14 @@ function App() {
     }
   }
 
+  const confirmacionModalElemento = confirmacion ? (
+    <ConfirmDialog
+      {...confirmacion}
+      onConfirm={() => resolverConfirmacion(true)}
+      onCancel={() => resolverConfirmacion(false)}
+    />
+  ) : null;
+
   const avisoModalElemento = avisoModal ? (
     <div
       className="app-notice-backdrop"
@@ -2022,7 +2061,7 @@ function App() {
   const estilosGlobalesElemento = (
     <style>{`
       button:disabled {
-        color: #808080 !important;
+        color: var(--texto-deshabilitado) !important;
         opacity: 1 !important;
       }
 
@@ -2066,17 +2105,17 @@ function App() {
         align-items: center;
         justify-content: center;
         padding: 18px;
-        background: rgba(0, 0, 0, 0.72);
+        background: var(--superposicion);
       }
 
       .visit-detail-modal {
         width: min(92vw, 760px);
         max-height: 86vh;
         overflow-y: auto;
-        background: #111111;
-        color: #ffffff;
-        border: 2px solid #ffffff;
-        border-radius: 18px;
+        background: var(--superficie);
+        color: var(--texto);
+        border: 4px solid var(--borde);
+        border-radius: 22px;
         padding: 20px;
         box-sizing: border-box;
       }
@@ -2194,11 +2233,11 @@ function App() {
           width: 'min(92vw, 720px)',
           maxHeight: '88vh',
           overflowY: 'auto',
-          background: '#000000',
-          color: '#ffffff',
+          background: 'var(--campo)',
+          color: 'var(--texto)',
           borderRadius: '18px',
           padding: '20px',
-          boxShadow: '0 18px 60px rgba(0, 0, 0, 0.55)',
+          boxShadow: 'var(--sombra-modal)',
         }}
       >
         <h2 id="selector-producto-titulo" style={{ marginTop: 0 }}>
@@ -2207,7 +2246,7 @@ function App() {
 
         <label
           className="field-label product-full-field"
-          style={{ color: '#ffffff' }}
+          style={{ color: 'var(--texto)' }}
         >
           Tipo de producto
           <select
@@ -2216,9 +2255,9 @@ function App() {
             onChange={manejarCambioTipoProducto}
             autoFocus
             style={{
-              background: '#111111',
-              color: '#ffffff',
-              borderColor: '#555555',
+              background: 'var(--superficie)',
+              color: 'var(--texto)',
+              borderColor: 'var(--borde-secundario)',
             }}
           >
             <option value="">Seleccionar tipo...</option>
@@ -2234,15 +2273,15 @@ function App() {
           <div
             className="product-full-field"
             style={{
-              color: '#ffffff',
-              border: '1px solid #555555',
+              color: 'var(--texto)',
+              border: '1px solid var(--borde-secundario)',
               borderRadius: '12px',
               padding: '14px',
               marginBottom: '12px',
             }}
           >
             <strong>{tipoProductoSeleccionado}</strong>
-            <p style={{ margin: '8px 0 0', color: '#ffffff' }}>
+            <p style={{ margin: '8px 0 0', color: 'var(--texto)' }}>
               {esTipoSoloPesoManual(tipoProductoSeleccionado)
                 ? 'Este producto no tiene subproductos. Se cotiza ingresando manualmente el peso total y el precio USD/kg.'
                 : esTipoSoloUnidad(tipoProductoSeleccionado)
@@ -2253,7 +2292,7 @@ function App() {
         ) : (
           <label
             className="field-label product-full-field"
-            style={{ color: '#ffffff' }}
+            style={{ color: 'var(--texto)' }}
           >
             Producto
             <select
@@ -2262,12 +2301,12 @@ function App() {
               onChange={manejarCambioProducto}
               disabled={!tipoProductoSeleccionado}
               style={{
-                background: '#111111',
-                color: tipoProductoSeleccionado ? '#ffffff' : '#808080',
+                background: 'var(--superficie)',
+                color: tipoProductoSeleccionado ? 'var(--texto)' : 'var(--texto-deshabilitado)',
                 WebkitTextFillColor: tipoProductoSeleccionado
-                  ? '#ffffff'
-                  : '#808080',
-                borderColor: '#555555',
+                  ? 'var(--texto)'
+                  : 'var(--texto-deshabilitado)',
+                borderColor: 'var(--borde-secundario)',
                 opacity: 1,
               }}
             >
@@ -2288,7 +2327,7 @@ function App() {
         {tipoCalculoProducto === 'peso' &&
           masaNominalProducto !== null &&
           productoProveedorId && (
-            <p style={{ color: '#ffffff' }}>
+            <p style={{ color: 'var(--texto)' }}>
               Masa nominal:{' '}
               <strong>
                 {formatearDecimal4SinMiles(masaNominalProducto)} kg/m
@@ -2297,13 +2336,13 @@ function App() {
           )}
 
         {tipoCalculoProducto === 'metro' && productoProveedorId && (
-          <p style={{ color: '#ffffff' }}>
+          <p style={{ color: 'var(--texto)' }}>
             Este producto se cotiza por metro lineal.
           </p>
         )}
 
         {tipoCalculoProducto === 'plancha' && productoProveedorId && (
-          <p style={{ color: '#ffffff' }}>
+          <p style={{ color: 'var(--texto)' }}>
             El peso se calcula con largo, ancho y espesor en mm.
           </p>
         )}
@@ -2324,7 +2363,7 @@ function App() {
                 (esTipoSinSubproducto(tipoProductoSeleccionado) ||
                   productoProveedorId)
                   ? undefined
-                  : '#808080',
+                  : 'var(--texto-deshabilitado)',
               opacity: 1,
             }}
           >
@@ -2376,6 +2415,7 @@ function App() {
     return (
       <main className="app-shell" translate="no">
         {estilosGlobalesElemento}
+        {confirmacionModalElemento}
 
         <section className="home-card">
           <div className="app-header">
@@ -2428,6 +2468,7 @@ function App() {
     return (
       <main className="app-shell" translate="no">
         {estilosGlobalesElemento}
+        {confirmacionModalElemento}
         {detalleVisitaModalElemento}
 
         <section className="screen-card">
@@ -2454,7 +2495,7 @@ function App() {
           </div>
 
           {mensajeVisita && (
-            <div className="message-box">{mensajeVisita}</div>
+            <div className="message-box" role="status" aria-live="polite">{mensajeVisita}</div>
           )}
 
           <form className="form-card" onSubmit={guardarVisitaCliente}>
@@ -2592,6 +2633,7 @@ function App() {
       <main className="app-shell" translate="no">
         {avisoModalElemento}
         {estilosGlobalesElemento}
+        {confirmacionModalElemento}
 
         <section className="screen-card">
           <button type="button" className="back-button" onClick={volverInicio}>
@@ -2600,9 +2642,12 @@ function App() {
 
           <div className="app-header">
             <h1 className="single-line-title">Seguridad de datos</h1>
+            <AppVersionInfo />
           </div>
 
-          {mensaje && <div className="message-box">{mensaje}</div>}
+          <div role="status" aria-live="polite" aria-atomic="true">
+            {mensaje && <div className="message-box">{mensaje}</div>}
+          </div>
 
           <div className="form-card">
             <h2>Almacenamiento en tablet</h2>
@@ -2689,6 +2734,7 @@ function App() {
       <main className="app-shell" translate="no">
         {avisoModalElemento}
         {estilosGlobalesElemento}
+        {confirmacionModalElemento}
         {selectorProductoModalElemento}
 
         <section className="screen-card">
@@ -2715,7 +2761,9 @@ function App() {
             </p>
           </div>
 
-          {mensaje && <div className="message-box">{mensaje}</div>}
+          <div role="status" aria-live="polite" aria-atomic="true">
+            {mensaje && <div className="message-box">{mensaje}</div>}
+          </div>
 
           <div className="form-card client-compact-card">
             <div className="client-summary-row">
@@ -3463,6 +3511,7 @@ function App() {
     <main className="app-shell" translate="no">
       {avisoModalElemento}
       {estilosGlobalesElemento}
+        {confirmacionModalElemento}
 
       <section className="home-card">
         <div className="top-actions-row">
@@ -3494,7 +3543,9 @@ function App() {
           )}
         </div>
 
-        {mensaje && <div className="message-box">{mensaje}</div>}
+        <div role="status" aria-live="polite" aria-atomic="true">
+            {mensaje && <div className="message-box">{mensaje}</div>}
+          </div>
 
         <div className="main-actions">
           <button
