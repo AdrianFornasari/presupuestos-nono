@@ -1,0 +1,9 @@
+Presupuestos Nono — ETAPA 9.6
+
+Contiene diez archivos completos. Copiar conservando las rutas sobre presupuestos-nono-main.zip adjunto. Los cuatro archivos nuevos se agregan; los otros seis reemplazan sus homónimos. Luego ejecutar npm run build y publicar usando el procedimiento habitual del proyecto.
+
+En Configuración debe verse Presupuestos Nono — v9.6. Datos de pantalla permite consultar el ancho visible en px. El breakpoint de 560 px y los tamaños de letra quedan sin cambios.
+
+Cambios: paleta oscura centralizada, botones sin grandes rellenos blancos, modal de lectura oscura, confirmación propia de eliminar/restaurar, foco visible y anuncios de mensajes. No cambia el núcleo de cálculos, persistencia ni PDF.
+
+Verificación local: build y regresiones OK; ESLint sin errores y una advertencia previa. Pendiente prueba visual, foco y audio en tablet Android real. Se mantiene PWA autoUpdate; no se agrega todavía aviso de nueva versión ni exportación de registros de voz.
