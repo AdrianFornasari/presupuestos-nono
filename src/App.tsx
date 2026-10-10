@@ -9,6 +9,7 @@ import {
 } from 'react';
 import ConfirmDialog, { type ConfirmationOptions } from './components/ConfirmDialog';
 import AppVersionInfo from './components/AppVersionInfo';
+import { descargarRegistroVoz } from './db/voiceLogExportService';
 import MetalWeightCalculatorModal, {
   calcularPesoTotalTuboCalculadora,
   type ResultadoCalculoMetal,
@@ -482,6 +483,22 @@ function App() {
 
   const [driveConectado, setDriveConectado] = useState(false);
   const [driveTrabajando, setDriveTrabajando] = useState(false);
+  const [exportandoRegistroVoz, setExportandoRegistroVoz] = useState(false);
+
+  async function exportarRegistroVoz() {
+    if (exportandoRegistroVoz) return;
+    setExportandoRegistroVoz(true);
+    setMensaje('Preparando registro de voz...');
+    try {
+      const archivo = await descargarRegistroVoz();
+      setMensaje(`Se inició la descarga de ${archivo.totalRegistros} transcripciones: ${archivo.nombreArchivo}. Revisá las descargas del dispositivo.`);
+    } catch (error) {
+      const detalle = error instanceof Error ? error.message : 'Error desconocido.';
+      setMensaje(`No se pudo exportar el registro de voz. ${detalle}`);
+    } finally {
+      setExportandoRegistroVoz(false);
+    }
+  }
 
   const presupuestosFiltrados = useMemo(() => {
     const consulta = normalizarBusquedaPresupuesto(consultaPresupuesto);
@@ -2691,6 +2708,24 @@ function App() {
               className="hidden-input"
               onChange={restaurarBackup}
             />
+          </div>
+
+          <div className="form-card">
+            <h2>Registro de voz</h2>
+            <p className="empty-text">
+              Descargá las transcripciones y sus evaluaciones para revisar la prueba de voz.
+              La descarga incluye todo el historial y lo conserva en la tablet.
+            </p>
+            <div className="main-actions backup-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => void exportarRegistroVoz()}
+                disabled={exportandoRegistroVoz}
+              >
+                {exportandoRegistroVoz ? 'Preparando registro...' : 'Exportar registro de voz'}
+              </button>
+            </div>
           </div>
 
           <div className="form-card">

@@ -83,7 +83,8 @@ const PATRON_PALABRA_NUMERO = PALABRAS_NUMERO
   .join('|');
 
 const REGEX_SECUENCIA_NUMERICA = new RegExp(
-  `\\b(?:${PATRON_PALABRA_NUMERO})(?:(?:\\s+y\\s+|\\s+)(?:${PATRON_PALABRA_NUMERO}))*\\b`,
+  // El límite debe incluir letras acentuadas: «mil» no es un número dentro de «milímetros».
+  `\\b(?:${PATRON_PALABRA_NUMERO})(?:(?:\\s+y\\s+|\\s+)(?:${PATRON_PALABRA_NUMERO}))*(?![a-záéíóúüñ\\d_])`,
   'giu',
 );
 
@@ -421,6 +422,8 @@ function normalizarSiglasEstructuralesPegadas(texto: string): string {
 
 function normalizarTerminosReconocidos(texto: string): string {
   return texto
+    // Letras dictadas de la misma sigla, antes de normalizar «perfil U».
+    .replace(/\bu\s+ele\b/giu, 'UL')
     // Android/Chrome puede reconocer la sigla "UL" como la palabra
     // "huele". Se corrige sólo cuando aparece en posición de producto:
     // al inicio de la frase o inmediatamente después de una cantidad.

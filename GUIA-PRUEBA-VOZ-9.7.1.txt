@@ -1,0 +1,29 @@
+PRUEBA REAL DE VOZ — PRESUPUESTOS NONO v9.7.1
+
+ANTES: tablet en vertical, comprobar v9.7.1 en Configuración y anotar Datos de pantalla. Crear un presupuesto por voz: PRUEBA VOZ TABLET. Trabajar realmente con el modo manual hasta considerar confiable la voz.
+
+PRODUCTOS Y DATOS DE PRUEBA:
+Tubo cuadrado 50x50x2 mm — 5 unidades, largo 6 m, precio 1,500/kg.
+Tubo rectangular 100x50x2 mm — 4 unidades, largo 6 m, precio 1,650/kg.
+UL 50x25 — 4 unidades, largo 12 m, precio 1,400/kg.
+Barra redonda 1/2 pulgada — 5 unidades, largo 6 m, precio 1,500/kg.
+
+FRASES DE REFERENCIA (decir también con palabras propias):
+TQ-1: Cinco tubos cuadrados de cincuenta por cincuenta por dos milímetros largo seis metros a uno quinientos el kilo
+TQ-2: Cinco tubos cuadrados de cincuenta por cincuenta por dos milímetros largo seis metros a uno coma cinco el kilo
+TR-1: Cuatro tubos rectangulares de cien por cincuenta por dos milímetros largo seis metros a uno seiscientos cincuenta el kilo
+TR-2: Cuatro tubos rectangulares de cien por cincuenta por dos milímetros largo seis metros a uno coma seis cinco el kilo
+UL-1: Cuatro perfiles UL de cincuenta por veinticinco largo doce metros a uno cuatrocientos el kilo
+UL-2: Cuatro perfiles u ele cincuenta por veinticinco largo doce metros a uno coma cuatro el kilo
+BR-1: Cinco barras redondas de media pulgada largo seis metros a uno quinientos el kilo
+BR-2: Cinco barras redondas de un medio de pulgada largo seis metros a uno coma cinco el kilo
+
+PASOS: dictar A; abrir Ver detalles de reconocimiento; responder Sí/No según lo realmente dicho. Si el reconocimiento fue incorrecto, completar Qué quisiste decir y Guardar evaluación. Si la transcripción es correcta pero la interpretación falla, marcar Sí y anotar el fallo de interpretación aparte.
+
+Guardar evaluación antes de cambiar de turno. Para probar B usar Ayuda y accesibilidad > Borrar transcripción; esto limpia la pantalla sin borrar el registro guardado ni líneas del presupuesto. Dictar B y evaluar. Agregar cada producto una sola vez y sólo cuando familia, medidas, cantidad, largo y precio coincidan.
+
+Leer productos cotizados: probar velocidad, anterior/siguiente, pausa/reanudar y detener. Después, Configuración > Exportar registro de voz. Conservar el JSON e informar versión, ancho visible y frases problemáticas.
+
+CORRECCIONES v9.7.1: las frases con "dos milímetros" y "u ele" ahora se interpretan correctamente en las pruebas locales. Comprobarlas con la transcripción real de la tablet. No se da por aprobada la prueba de Android ni B2.
+
+El JSON conserva todo el historial, incluye evaluaciones y datos del dispositivo al exportar. analisisAlExportar es un análisis nuevo de cada texto aislado con v9.7.1; no es una reconstrucción histórica de aclaraciones/correcciones.

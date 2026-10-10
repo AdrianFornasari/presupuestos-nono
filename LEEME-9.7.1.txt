@@ -1,0 +1,15 @@
+PRESUPUESTOS NONO — v9.7.1
+
+Actualización acumulativa, aplicable sobre v9.6 o v9.7. Incluye exportación del registro de voz y las dos correcciones autorizadas: milímetros y u ele.
+
+Descomprimir el ZIP en una carpeta temporal. Copiar la carpeta src dentro de C:\Trabajos\Nono\presupuestos-nono, conservando las rutas y aceptando reemplazos. No crear una carpeta intermedia y no borrar el resto de src.
+
+Cuatro archivos completos:
+src/App.tsx
+src/config/appVersion.ts
+src/db/voiceLogExportService.ts
+src/voice/normalization/normalizeVoiceText.ts
+
+Ejecutar npm run build. No cambian dependencias: no requiere npm install. Luego publicar con el procedimiento habitual de GitHub Pages: commit y push a main. Verificar la ejecución nueva de Actions y comprobar v9.7.1 en Configuración.
+
+Pruebas locales: fallos originales corregidos; unidades, decimales, familias, precios y fracciones; núcleo manual, PDF, lectura/controles y exportación JSON OK. Pendiente probar reconocimiento, audio y descarga reales en tablet. Usar GUIA-PRUEBA-VOZ-9.7.1.txt.
