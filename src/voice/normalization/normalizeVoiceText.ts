@@ -83,8 +83,7 @@ const PATRON_PALABRA_NUMERO = PALABRAS_NUMERO
   .join('|');
 
 const REGEX_SECUENCIA_NUMERICA = new RegExp(
-  // El límite debe incluir letras acentuadas: «mil» no es un número dentro de «milímetros».
-  `\\b(?:${PATRON_PALABRA_NUMERO})(?:(?:\\s+y\\s+|\\s+)(?:${PATRON_PALABRA_NUMERO}))*(?![a-záéíóúüñ\\d_])`,
+  `\\b(?:${PATRON_PALABRA_NUMERO})(?:(?:\\s+y\\s+|\\s+)(?:${PATRON_PALABRA_NUMERO}))*\\b`,
   'giu',
 );
 
@@ -422,8 +421,6 @@ function normalizarSiglasEstructuralesPegadas(texto: string): string {
 
 function normalizarTerminosReconocidos(texto: string): string {
   return texto
-    // Letras dictadas de la misma sigla, antes de normalizar «perfil U».
-    .replace(/\bu\s+ele\b/giu, 'UL')
     // Android/Chrome puede reconocer la sigla "UL" como la palabra
     // "huele". Se corrige sólo cuando aparece en posición de producto:
     // al inicio de la frase o inmediatamente después de una cantidad.
@@ -458,11 +455,32 @@ function normalizarTerminosReconocidos(texto: string): string {
 }
 
 function normalizarUnidades(texto: string): string {
-  return texto
-    .replace(/\bmil[ií]metros?\b/giu, 'mm')
-    .replace(/\bkilogramos?\b/giu, 'kg')
-    .replace(/\bkilos?\b/giu, 'kg')
-    .replace(/\bmetros?\b/giu, 'm');
+  // En JavaScript, \b no reconoce correctamente letras acentuadas como
+  // caracteres de palabra. Eso hacía que `metro` coincidiera dentro de
+  // `diámetro` y lo transformara accidentalmente en `diám`.
+  //
+  // Exigimos que la unidad esté al inicio o precedida por un carácter que no
+  // sea letra, número ni guion bajo, preservando palabras como `diámetro`.
+  const reemplazarUnidadAislada = (
+    entrada: string,
+    patronUnidad: string,
+    reemplazo: string,
+  ): string =>
+    entrada.replace(
+      new RegExp(`(^|[^\\p{L}\\p{N}_])(?:${patronUnidad})(?=$|[^\\p{L}\\p{N}_])`, 'giu'),
+      (_coincidencia, prefijo: string) => `${prefijo}${reemplazo}`,
+    );
+
+  let resultado = reemplazarUnidadAislada(
+    texto,
+    'mil[ií]metros?',
+    'mm',
+  );
+  resultado = reemplazarUnidadAislada(resultado, 'kilogramos?', 'kg');
+  resultado = reemplazarUnidadAislada(resultado, 'kilos?', 'kg');
+  resultado = reemplazarUnidadAislada(resultado, 'metros?', 'm');
+
+  return resultado;
 }
 
 function formatearPrecioCanonico(valor: string): string {
@@ -671,6 +689,10 @@ export function normalizeVoiceText(text: string): string {
   resultado = normalizarTerminosReconocidos(resultado);
   resultado = normalizarPrefijoPrecioPegado(resultado);
   resultado = normalizarPreciosHablados(resultado);
+  // Normalizar primero las unidades escritas en palabras evita que el parser
+  // de números interprete el prefijo `mil` de `milímetros` como el número 1000.
+  // Además, normalizarUnidades usa límites Unicode y no altera `diámetro`.
+  resultado = normalizarUnidades(resultado);
   resultado = normalizarNumerosEnPalabras(resultado);
   resultado = normalizarDieciseisavosPulgada(resultado);
   resultado = normalizarPulgadasYMedias(resultado);
@@ -678,7 +700,6 @@ export function normalizeVoiceText(text: string): string {
   resultado = normalizarSeparadoresDecimalesGenerales(resultado);
   resultado = normalizarDecimalesNumericos(resultado);
   resultado = normalizarPrecioCompactado(resultado);
-  resultado = normalizarUnidades(resultado);
   resultado = normalizarUnidadesPrecio(resultado);
   resultado = normalizarPrecisionFinalPrecios(resultado);
   resultado = normalizarMediosMetros(resultado);
