@@ -159,7 +159,7 @@ function extractRedondoDimensions(text: string): {
   thicknessMm?: number;
 } {
   const explicitDiameter = text.match(
-    new RegExp(`\\bdi[aá]metro(?:\\s+exterior)?\\s+${NUMBER_PATTERN}(?:\\s*mm)?\\b`, 'iu'),
+    new RegExp(`\\bdi(?:[aá]metro|[aá]m\\.?)(?:\\s+exterior)?\\s+${NUMBER_PATTERN}(?:\\s*mm)?\\b`, 'iu'),
   );
 
   const aliasPattern = PRODUCT_ALIAS_PATTERNS['Tubo redondo'];
