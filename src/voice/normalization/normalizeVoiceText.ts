@@ -240,6 +240,24 @@ function normalizarPrefijoPrecioPegado(texto: string): string {
   );
 }
 
+/**
+ * El reconocedor Android puede transcribir USD como USB. Se elimina la
+ * mención de moneda ÚNICAMENTE al lado de una unidad de cotización y tras
+ * una expresión de precio; no se reemplaza USB en otros contextos.
+ * La cifra y su coma quedan intactas para el normalizador existente.
+ */
+function normalizarMonedaEnPrecio(texto: string): string {
+  const monedaYUnidad = /\b(?:usd|usb|d[oó]lares?|d[oó]lar)\b(?=\s+(?:(?:el|por|del)\s+)?(?:kilogramos?|kilos?|kg|metros?|m|unidad(?:es)?|und|cada\s+(?:una|uno))\b)/giu;
+  return texto.replace(monedaYUnidad, (moneda: string, offset: number) => {
+    const antes = texto.slice(0, offset).trimEnd();
+    // Evitar reinterpretar una referencia USB o texto sin importe.
+    const indicioPrecio = /(?:^|\s)(?:a|precio(?:\s+de)?|vale|cuesta)\s+(?:[\p{L}\d,.$]+\s*){1,9}$/iu;
+    const precioAislado = /^(?:\d+(?:,\d{1,3})?|(?:cero|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve)\s+coma\s+[\p{L}\d\s]+)$/iu;
+    if (!indicioPrecio.test(antes) && !precioAislado.test(antes)) return moneda;
+    return '';
+  }).replace(/\s{2,}/gu, ' ');
+}
+
 function normalizarPreciosHablados(texto: string): string {
   const entero =
     '(?:cero|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|[0-9])';
@@ -687,6 +705,7 @@ export function normalizeVoiceText(text: string): string {
 
   resultado = normalizarSiglasEstructuralesPegadas(resultado);
   resultado = normalizarTerminosReconocidos(resultado);
+  resultado = normalizarMonedaEnPrecio(resultado);
   resultado = normalizarPrefijoPrecioPegado(resultado);
   resultado = normalizarPreciosHablados(resultado);
   // Normalizar primero las unidades escritas en palabras evita que el parser

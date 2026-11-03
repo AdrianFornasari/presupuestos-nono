@@ -7,8 +7,8 @@ export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
-      injectRegister: 'auto',
+      registerType: 'prompt',
+      injectRegister: false,
       includeAssets: ['pwa-192x192.png', 'pwa-512x512.png'],
       manifest: {
         name: 'Presupuestos Nono',
@@ -37,6 +37,8 @@ export default defineConfig(({ mode }) => ({
       },
       workbox: {
         cleanupOutdatedCaches: true,
+        skipWaiting: false,
+        clientsClaim: true,
         globPatterns: ['**/*.{js,css,html,png,svg,ico,webmanifest}'],
       },
       devOptions: {

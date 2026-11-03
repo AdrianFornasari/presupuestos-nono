@@ -1,0 +1,39 @@
+PRESUPUESTOS NONO — v9.7.3
+
+ZIP acumulativo para aplicar sobre 9.6, 9.7, 9.7.1 o 9.7.2.
+Descomprimir primero en una carpeta temporal.
+Copiar src dentro de C:\Trabajos\Nono\presupuestos-nono, conservando rutas y aceptando reemplazos. NO borrar el resto de src.
+Reemplazar también vite.config.ts en la raíz del proyecto.
+No cambian dependencias.
+
+Ejecutar npm run build. Luego commit y push a main como antes; comprobar Actions.
+Para la primera instalación, cerrar completamente la app y todas las pestañas del sitio, y abrirla de nuevo con conexión. Verificar v9.7.3 en Configuración. Si sigue la versión anterior, todavía no se cargó el nuevo mecanismo.
+Desde 9.7.3, buscará las próximas actualizaciones al volver a primer plano o recuperar conexión. Si hay versión nueva, la recarga espera al menú principal sin operaciones pendientes ni lectura activa. Los formularios conservan el trabajo en curso. Sin conexión sigue disponible la versión instalada.
+
+CORRECCIONES DE MEDIDAS
+Repetir en un presupuesto de prueba:
+4 barras cuadradas de 5/8 de pulgadas longitud 6 m precio 1,853/kg
+Resultado: barra cuadrada 5/8 pulgadas, cantidad 4, largo 6 m, precio 1,853/kg.
+cuatro ángulos de alas iguales de una pulgada y media por 3/16 de pulgada de 6 m de longitud a 1,6 por kilo
+Resultado: ángulo 1 1/2 x 3/16 pulgadas, cantidad 4, largo 6 m, precio 1,600/kg.
+
+PRUEBA DE ACTUALIZACIÓN (con una versión posterior publicada)
+Mandar a segundo plano y volver desde el menú: debe buscar y aplicar la versión nueva.
+Repetir dentro de un presupuesto: debe avisar y esperar a volver al menú; no cerrar el formulario.
+Repetir sin conexión: conservar acceso al trabajo y la versión instalada.
+
+Build y regresiones locales OK. Transcripción, audio y ciclo PWA real pendientes de prueba Android.
+
+ARCHIVOS COMPLETOS:
+src/App.tsx
+src/config/appVersion.ts
+src/db/voiceLogExportService.ts
+src/voice/normalization/normalizeVoiceText.ts
+src/voice/accessibility/budgetSpeechReview.ts
+src/voice/parsers/barraVoiceParser.ts
+src/voice/parsers/anguloPlanchuelaVoiceParser.ts
+src/main.tsx
+src/index.css
+src/pwa/foregroundUpdate.ts
+src/pwa/PwaUpdateNotice.tsx
+vite.config.ts

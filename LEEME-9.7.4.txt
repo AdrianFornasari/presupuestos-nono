@@ -1,0 +1,25 @@
+PRESUPUESTOS NONO — CORRECCIÓN v9.7.4 (10/10/2026)
+
+BASE: ZIP completo presupuestos-nono-main (1).zip, versión 9.7.3.
+CONTENIDO: proyecto completo con cambio puntual del parser de tubo redondo y versión visible 9.7.4.
+
+CAMBIOS:
+- src/voice/parsers/tuboVoiceParser.ts: reconoce diámetro, diametro, diám, diám., diam y diam., también seguidos por exterior.
+- src/config/appVersion.ts: 9.7.4.
+
+CASO REPORTADO:
+«cinco tubos redondos diámetro 60 milímetros espesor 2 mm longitud 6 m a 1,125 el kilo»
+Texto normalizado informado: «5 tubos redondos diám 60 mm espesor 2 mm longitud 6 m a 1,125/kg».
+El parser ahora extrae diámetro exterior 60 mm; los demás campos quedan a cargo de las reglas vigentes.
+
+VALIDACIÓN:
+- 8 variantes positivas y 1 negativa de la expresión regular, comprobadas con Node.js.
+- No se pudo validar el build completo: las dependencias de npm no pudieron instalarse correctamente en este entorno. npm run build falló con TS2688 (vite/client y node faltantes).
+- Aún pendiente: npm ci; npm run build y prueba funcional real en PC y tablet Android.
+
+INSTALACIÓN:
+1. Hacer backup del proyecto y sus datos locales.
+2. Descomprimir este ZIP en la carpeta de proyecto conservando rutas.
+3. Ejecutar npm ci y npm run build.
+4. Probar el dictado antes de publicar y verificar v9.7.4 en Configuración.
+No se modificaron cálculos, persistencia, PDF, tablas maestras ni flujo manual.

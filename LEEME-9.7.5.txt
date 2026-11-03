@@ -1,0 +1,36 @@
+PRESUPUESTOS NONO — PARCHE v9.7.5 (03/11/2026)
+
+BASE REQUERIDA: v9.7.4. Este paquete NO reemplaza el proyecto completo.
+
+ARCHIVOS DE CÓDIGO:
+- src/voice/normalization/normalizeVoiceText.ts
+- src/config/appVersion.ts
+
+CAMBIO: reconocimiento de nombres de moneda junto a un precio por kilo,
+metro o unidad, incluyendo USD, USB (error de Android), dólar/dólares.
+La mención de moneda se retira SOLO en contexto de precio, conservando
+el importe pronunciado con coma y normalizándolo a tres decimales.
+
+EJEMPLOS COMPROBADOS CON NORMALIZADOR REAL:
+- «a uno coma ciento veinticinco USB por kilogramo» -> «a 1,125/kg»
+- «a 1,125 USD por kilogramo» -> «a 1,125/kg»
+- «a 1,125 dólares por kg» -> «a 1,125/kg»
+- «precio 1,800 USD por metro» -> «precio 1,800/m»
+- «precio 50,000 dólares por unidad» -> «precio 50,000/Und»
+- «dispositivo USB por kg» -> conserva USB
+
+INSTALACIÓN:
+1. Hacer una copia de seguridad de los archivos del proyecto.
+2. Descomprimir en C:\Trabajos\Nono\presupuestos-nono, conservando rutas.
+3. Reemplazar SOLO los dos archivos de código incluidos.
+4. En la carpeta del proyecto: npm ci && npm run build.
+5. Publicar por procedimiento habitual y comprobar v9.7.5 en Configuración.
+6. Probar dictado desde la tablet antes de considerar validada la entrega.
+
+VALIDACIÓN:
+- Compilación aislada de normalizeVoiceText.ts con TypeScript: OK.
+- Pruebas directas de normalización de variantes de moneda, coma, metro,
+  unidad y texto USB no monetario: OK.
+- Build general NO verificado: npm ci offline no pudo completarse porque
+  faltan paquetes en caché (zod-validation-error 4.0.2).
+- No se alteraron parsers, cálculos, PDF, IndexedDB ni modo convencional.

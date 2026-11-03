@@ -1,0 +1,18 @@
+PRESUPUESTOS NONO — v9.7.2
+
+Actualización acumulativa, aplicable sobre v9.6, v9.7 o v9.7.1. Conserva la exportación de voz y las correcciones milímetros/u ele.
+
+Descomprimir en una carpeta temporal. Copiar src dentro de C:\Trabajos\Nono\presupuestos-nono, conservando las rutas y aceptando reemplazos. No borrar el resto de src.
+
+Cinco archivos completos incluidos:
+src/App.tsx
+src/config/appVersion.ts
+src/db/voiceLogExportService.ts
+src/voice/normalization/normalizeVoiceText.ts
+src/voice/accessibility/budgetSpeechReview.ts
+
+Ejecutar npm run build y publicar con commit/push a main como antes. Verificar Actions y v9.7.2 en Configuración. No cambian dependencias.
+
+Nuevo: el lector prepara fracciones de pulgadas como palabras: 1/2 -> media pulgada; 9/16 -> nueve dieciseisavos de pulgada; 1 1/2 -> una pulgada y media. Sólo modifica el texto hablado de la revisión. Las descripciones visibles, PDF y datos guardados conservan su formato.
+
+Build, texto enviado a síntesis, controles y regresiones locales OK. La pronunciación real depende de la voz del dispositivo y debe comprobarse en la tablet. Si sigue deletreando, informar la descripción exacta y qué frase se oye.
