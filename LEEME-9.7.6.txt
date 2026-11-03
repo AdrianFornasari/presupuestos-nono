@@ -1,0 +1,35 @@
+PRESUPUESTOS NONO - ACTUALIZACIÓN v9.7.6 (sobre v9.7.5)
+Fecha: 03/11/2026
+
+ARCHIVOS MODIFICADOS:
+  src/voice/normalization/normalizeVoiceText.ts
+  src/config/appVersion.ts
+
+INSTALACIÓN:
+1. Respaldar la carpeta actual de proyecto.
+2. Descomprimir este ZIP en C:\Trabajos\Nono\presupuestos-nono
+   conservando las rutas y aceptando el reemplazo de los dos archivos.
+3. Ejecutar npm run build desde la raíz del proyecto.
+4. Publicar siguiendo el procedimiento existente y verificar v9.7.6.
+
+COMPORTAMIENTO:
+- Cualquier palabra USB independiente se normaliza a USD.
+- Dólar/dólares/dolares y USD se consideran equivalentes en el precio.
+- Las expresiones sin 'a' ni 'precio' y con moneda antes de unidad
+  se convierten a 'a <importe>/<unidad>' para conservar los parsers.
+- No confunde los 5 m de longitud con 1,884 USD/m de precio.
+- Se preserva coma decimal y precio con tres decimales.
+
+PRUEBA REAL A REPETIR:
+  cuatro chapa trapezoidal negra 5 m 1,884 dólares por metro
+Resultado normalizado:
+  4 chapa trapezoidal negra 5 m a 1,884/m
+Resultado parser:
+  Chapa trapezoidal, negra, cantidad 4, largo 5 m, precio 1,884 USD/m.
+
+VERIFICACIÓN EN ESTE ENTORNO:
+- Compilación TypeScript aislada del normalizador y parser de chapas: OK.
+- Prueba integrada de texto y parser: OK sin campos faltantes.
+- npm run build COMPLETO: NO ejecutado; npm ci --offline no pudo
+  recuperar una dependencia no cacheada.
+- Prueba física de dictado Android: pendiente.

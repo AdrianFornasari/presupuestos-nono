@@ -241,20 +241,67 @@ function normalizarPrefijoPrecioPegado(texto: string): string {
 }
 
 /**
- * El reconocedor Android puede transcribir USD como USB. Se elimina la
- * mención de moneda ÚNICAMENTE al lado de una unidad de cotización y tras
- * una expresión de precio; no se reemplaza USB en otros contextos.
- * La cifra y su coma quedan intactas para el normalizador existente.
+ * Android puede devolver USB al dictar USD. La equivalencia es global
+ * (regla operativa solicitada); no altera importes ni unidades.
+ */
+function normalizarMonedaReconocida(texto: string): string {
+  return texto.replace(/\bUSB\b/giu, 'USD');
+}
+
+/**
+ * La moneda es optativa en el precio: `1,884 USD por metro` y
+ * `1,884 dólares por metro` deben producir exactamente el mismo valor.
+ * La moneda ancla la cifra como precio incluso sin `a` o `precio`, para no
+ * confundir un largo anterior (por ejemplo `5 m`) con un importe.
+ */
+function normalizarPrecioConMoneda(texto: string): string {
+  const moneda = '(?:USD|d[oó]lares?|d[oó]lar)';
+  const unidad = '(?:kilogramos?|kilos?|kg|metros?|m|unidad(?:es)?|und)';
+  const patron = new RegExp(
+    `(^|[^\\p{L}\\p{N}_])(\\d+(?:,\\d{1,3})?)\\s+${moneda}\\s+(?:(?:por|el|del|cada)\\s+)?(${unidad})(?=$|[^\\p{L}\\p{N}_])`,
+    'giu',
+  );
+  let resultado = texto.replace(patron, (_coincidencia, antes: string, importe: string, unidadOriginal: string, offset: number) => {
+    const u = unidadOriginal.toLocaleLowerCase('es-AR');
+    const unidadCanonica = /^(?:kilogramos?|kilos?|kg)$/u.test(u)
+      ? 'kg'
+      : /^(?:metros?|m)$/u.test(u) ? 'm' : 'Und';
+    const contexto = texto.slice(0, offset) + antes;
+    const prefijo = /(?:^|\s)(?:a|precio)\s*$/iu.test(contexto) ? '' : 'a ';
+    return `${antes}${prefijo}${formatearPrecioCanonico(importe)}/${unidadCanonica}`;
+  });
+
+  // Cuando el reconocimiento conserva palabras, procesar la coma hablada
+  // antes de la conversión general de numerales para preservar el precio.
+  const patronHablado = new RegExp(
+    `(^|[^\\p{L}\\p{N}_])(cero|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|[0-9])\\s+coma\\s+((?:${PATRON_PALABRA_NUMERO}|\\d{1,3})(?:(?:\\s+y\\s+|\\s+)(?:${PATRON_PALABRA_NUMERO}|\\d{1,3})){0,4})\\s+${moneda}\\s+(?:(?:por|el|del|cada)\\s+)?(${unidad})(?=$|[^\\p{L}\\p{N}_])`,
+    'giu',
+  );
+  resultado = resultado.replace(patronHablado, (coincidencia, antes: string, entero: string, decimal: string, unidadOriginal: string, offset: number) => {
+    const enteroNumero = /^[0-9]$/u.test(entero) ? Number(entero) : parsearNumeroEspanol(entero);
+    const parteDecimal = normalizarFraccionPrecio(decimal);
+    if (enteroNumero === null || parteDecimal === null) return coincidencia;
+    const u = unidadOriginal.toLocaleLowerCase('es-AR');
+    const unidadCanonica = /^(?:kilogramos?|kilos?|kg)$/u.test(u)
+      ? 'kg'
+      : /^(?:metros?|m)$/u.test(u) ? 'm' : 'Und';
+    const contexto = resultado.slice(0, offset) + antes;
+    const prefijo = /(?:^|\s)(?:a|precio)\s*$/iu.test(contexto) ? '' : 'a ';
+    return `${antes}${prefijo}${enteroNumero},${parteDecimal}/${unidadCanonica}`;
+  });
+  return resultado;
+}
+
+/**
+ * Para precios con prefijo `a` o `precio` conserva el procesamiento
+ * histórico, quitando sólo la palabra monetaria cuando va ante una unidad.
  */
 function normalizarMonedaEnPrecio(texto: string): string {
-  const monedaYUnidad = /\b(?:usd|usb|d[oó]lares?|d[oó]lar)\b(?=\s+(?:(?:el|por|del)\s+)?(?:kilogramos?|kilos?|kg|metros?|m|unidad(?:es)?|und|cada\s+(?:una|uno))\b)/giu;
-  return texto.replace(monedaYUnidad, (moneda: string, offset: number) => {
+  const patron = /\b(?:USD|d[oó]lares?|d[oó]lar)\b(?=\s+(?:(?:el|por|del|cada)\s+)?(?:kilogramos?|kilos?|kg|metros?|m|unidad(?:es)?|und)\b)/giu;
+  return texto.replace(patron, (_moneda: string, offset: number) => {
     const antes = texto.slice(0, offset).trimEnd();
-    // Evitar reinterpretar una referencia USB o texto sin importe.
-    const indicioPrecio = /(?:^|\s)(?:a|precio(?:\s+de)?|vale|cuesta)\s+(?:[\p{L}\d,.$]+\s*){1,9}$/iu;
-    const precioAislado = /^(?:\d+(?:,\d{1,3})?|(?:cero|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve)\s+coma\s+[\p{L}\d\s]+)$/iu;
-    if (!indicioPrecio.test(antes) && !precioAislado.test(antes)) return moneda;
-    return '';
+    const contexto = /(?:^|\s)(?:a|precio(?:\s+de)?|vale|cuesta)\s+(?:[\p{L}\d,.$]+\s*){1,9}$/iu;
+    return contexto.test(antes) ? '' : _moneda;
   }).replace(/\s{2,}/gu, ' ');
 }
 
@@ -705,6 +752,8 @@ export function normalizeVoiceText(text: string): string {
 
   resultado = normalizarSiglasEstructuralesPegadas(resultado);
   resultado = normalizarTerminosReconocidos(resultado);
+  resultado = normalizarMonedaReconocida(resultado);
+  resultado = normalizarPrecioConMoneda(resultado);
   resultado = normalizarMonedaEnPrecio(resultado);
   resultado = normalizarPrefijoPrecioPegado(resultado);
   resultado = normalizarPreciosHablados(resultado);
